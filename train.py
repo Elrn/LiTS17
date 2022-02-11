@@ -40,7 +40,7 @@ num_class, input_shape = LiST17.num_class, LiST17.input_shape
 
 ### Build model
 input = tf.keras.layers.Input(shape=input_shape)
-output = models.build(num_class)(input)
+output = models.AE(num_class)(input)
 model = tf.keras.Model(input, output, name=None)
 
 ### Compile model
