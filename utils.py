@@ -4,7 +4,6 @@ import numpy as np
 # import nibabel as nib
 import SimpleITK as sitk
 import tensorflow as tf
-from flags import FLAGS
 
 ########################################################################################################################
 """ LOGGING """
@@ -284,7 +283,7 @@ def crop_voxel(image, tartget_size, crop_ratio=None, use_zero_crop=None):
         margin_ratio = np.divide(check_margin, np.stack([total_margins, total_margins], 1))
         margin_ratio = np.nan_to_num(margin_ratio)
         crop_margin = total_margins - need_crop
-        zero_crop = need_crop * (crop_margin > 0)
+        zero_crop = np.where(crop_margin > 0, need_crop, total_margins)
         need_crop -= zero_crop
         amount_margin_crop = margin_ratio * np.stack([zero_crop, zero_crop], 1)
         amount_margin_crop = solve_around_problem(amount_margin_crop).astype(np.int32)

@@ -45,29 +45,11 @@ def parse_fn(vol, seg):
     seg = tf.one_hot(seg, num_class, axis=-1)
     return (vol, seg)
 
-def parse_fn_slice(vol, seg):
-    """ 2D slice """
-    size = [1]+input_shape
-
-    vol = tf.reshape(vol, [1] + vol.shape)  # add batch
-    vol = utils.SWN(vol, 30, [150, 25])
-    vol = tf.extract_volume_patches(input=vol, ksizes=size, strides=size, padding='VALID')
-    vol = tf.reshape(vol, [-1] + input_shape)
-
-    seg = tf.reshape(seg, [1] + seg.shape + [1]) # add batch and channel
-    seg = tf.extract_volume_patches(input=seg, ksizes=size, strides=size, padding='VALID')
-    seg = tf.reshape(seg, [-1]+input_shape[:-1]) # except channel for one hot
-    seg = tf.cast(seg, 'int32')
-    seg = tf.one_hot(seg, num_class, axis=-1)
-    return (vol, seg)
-
 def validation_split_fn(dataset, validation_split):
-    _len = lambda x:tf.data.experimental.cardinality(x).numpy()
-    total_count = _len(dataset)
-    valid_count = int(total_count * validation_split)
-    dataset, valid_dataset = dataset.skip(valid_count), dataset.take(valid_count)
-    print(f'[Dataset|split] Total: "{total_count}", Train: "{_len(dataset)}", Valid: "{_len(valid_dataset)}"')
-    return dataset, valid_dataset
+    len_dataset = tf.data.experimental.cardinality(dataset).numpy()
+    valid_count = int(len_dataset * validation_split)
+    print(f'[Dataset|split] Total: "{len_dataset}", Train: "{len_dataset-valid_count}", Valid: "{valid_count}"')
+    return dataset.skip(valid_count), dataset.take(valid_count)
 
 def build(batch_size, validation_split=0.1):
     assert 0 <= validation_split <= 0.5
