@@ -258,6 +258,10 @@ def crop_voxel(image, tartget_size, crop_ratio=None, use_zero_crop=None):
         np 반올림은 .5 를 버린다. 홀수를 반으로 나누면 .5로 나누어지므로 일부는 올리고 일부는 버린다.
         """
         ratio = np.transpose(ratio)
+        # ratio를 적용 후 정수로 나누어 질 때 float 처리 한계로 완벽한 정수가 아닌 값이 나옴
+        # 따라서 반올림으로 나머지를 버려야 제대로 된 정수를 얻을 수 있다.
+        # floor 부분은 어차피 버리기 때문에 상관없음
+        ratio[0] = np.round(ratio[0], 2)
         ratio[0] = np.ceil(ratio[0])
         ratio[1] = np.floor(ratio[1])
         ratio = np.transpose(ratio)
