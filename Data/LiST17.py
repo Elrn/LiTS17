@@ -57,7 +57,7 @@ def build(batch_size, validation_split=0.1):
     print(f'[Dataset] load:"{basename(file_path)}", batch size:"{batch_size}", split:"{validation_split}"')
     with np.load(file_path) as data:
         dataset = load((data['vol'], data['seg']), batch_size)
-        if validation_split is not None and validation_split is not 0:
+        if validation_split is not None and validation_split != 0:
             return validation_split_fn(dataset, validation_split)
         else:
             return dataset, None
