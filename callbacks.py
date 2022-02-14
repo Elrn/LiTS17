@@ -12,6 +12,7 @@ import logging
 
 class monitor(tf.keras.callbacks.Callback):
     def __init__(self, save_dir, dataset=None, fig_size_rate=3):
+        super(monitor, self).__init__()
         self.save_dir = save_dir
         self.dataset = dataset
         self.fig_size_rate = fig_size_rate
@@ -87,6 +88,7 @@ class monitor(tf.keras.callbacks.Callback):
 
 class continue_training(tf.keras.callbacks.Callback):
     def __init__(self, filepath):
+        super(continue_training, self).__init__()
         self.filepath = os.fspath(filepath) if isinstance(filepath, os.PathLike) else filepath
 
     def on_train_begin(self, logs=None):
