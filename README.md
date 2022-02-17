@@ -1,5 +1,8 @@
 ![139](https://user-images.githubusercontent.com/19265337/153465481-95d24e8c-0fbc-4e3f-b26d-c7e3777070f7.png)
 
+Green: Label
+Red: Prediction
+
 | **Metric** | **내용** | **설명** |
 |---|---|---|
 | Precision | 0.7696| TP / (TP + FP) |
