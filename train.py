@@ -3,14 +3,17 @@
 import tensorflow as tf
 import utils, models, metrics, callbacks
 from Data import LiST17
-from tensorflow.keras.metrics import *
 from tensorflow.keras.callbacks import *
-import os, datetime, re
+import os, re, logging
 
 ########################################################################################################################
 os.putenv('TF_GPU_ALLOCATOR', 'cuda_malloc_async')
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+logging.getLogger('matplotlib.font_manager').disabled = True
+logging.getLogger('PIL.PngImagePlugin').disabled = True
+logging.getLogger('h5py._conv').disabled = True
+
 gpus = tf.config.experimental.list_physical_devices('GPU')
 if gpus:
     try:
