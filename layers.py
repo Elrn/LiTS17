@@ -28,6 +28,30 @@ class LAP_2D(pooling.Pooling2D):
         if data_format == 'channels_first':
             input = tf.transpose(input, [0, 2, 3, 1])
         patches = tf.image.extract_patches(input, ksize, strides, [1, 1, 1, 1], padding)
+        max = tf.nn.max_pool(input, ksize, strides, padding)
+        softmax = tf.math.exp(-(self.alpha ** 2) * (tf.repeat(max, tf.reduce_prod(ksize), -1) - patches) ** 2)
+        logit = (softmax * patches + EPSILON)
+        logit = tf.stack(tf.split(logit, logit.shape[-1] // self.n_ch, -1), -1)
+        return tf.reduce_mean(logit, -1)
+
+########################################################################################################################
+class AdaPool(pooling.Pooling2D):
+    """ https://arxiv.org/abs/2111.00772
+    AdaPool: Exponential Adaptive Pooling for Information-Retaining Downsampling
+    """
+    def __init__(self, pool_size=2, strides=2, padding='VALID', data_format=None, name=None, **kwargs):
+        super(AdaPool, self).__init__(
+            self.pool_function, pool_size=pool_size, strides=strides, padding=padding, name=name,
+            data_format=data_format, **kwargs
+        )
+    def build(self, input_shape):
+        self.n_ch = input_shape[-1]
+        self.alpha = self.add_weight("alpha", shape=[1], initializer='HeNormal')
+
+    def pool_function(self, input, ksize, strides, padding, data_format=None):
+        if data_format == 'channels_first':
+            input = tf.transpose(input, [0, 2, 3, 1])
+        patches = tf.image.extract_patches(input, ksize, strides, [1, 1, 1, 1], padding)
         patches = [tf.strided_slice(patches, [0, 0, 0, i], patches.shape, [1, 1, 1, self.n_ch])
                    for i in range(self.n_ch)]
         max = tf.reduce_max(patches, -1, keepdims=True)
