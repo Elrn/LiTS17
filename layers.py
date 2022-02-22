@@ -1,19 +1,18 @@
 import tensorflow as tf
 from tensorflow.keras.layers import *
-from tensorflow.python.keras.layers import *
+from tensorflow.python.keras.layers import pooling
 from tensorflow.python.keras.utils import conv_utils
+from tensorflow.keras.constraints import *
+from tensorflow.keras.initializers import *
 
 ########################################################################################################################
 EPSILON = tf.keras.backend.epsilon()
-act = 'relu'
-
-BN_ACT = lambda x : tf.nn.relu(BatchNormalization()(x))
-ACT_BN = lambda x : BatchNormalization()(tf.nn.relu(x))
 
 ########################################################################################################################
 class LAP_2D(pooling.Pooling2D):
-    """ https://arxiv.org/abs/2201.11808
+    """
     LAP: An Attention-Based Module for Faithful Interpretation and Knowledge Injection in Convolutional Neural Networks
+        https://arxiv.org/abs/2201.11808
     """
     def __init__(self, pool_size=2, strides=2, padding='VALID', data_format=None, name=None, **kwargs):
         super(LAP_2D, self).__init__(
@@ -22,7 +21,7 @@ class LAP_2D(pooling.Pooling2D):
         )
     def build(self, input_shape):
         self.n_ch = input_shape[-1]
-        self.alpha = self.add_weight("alpha", shape=[1], initializer='HeNormal')
+        self.alpha = self.add_weight("alpha", shape=[1], initializer=Constant(0.1), constraint=NonNeg())
 
     def pool_function(self, input, ksize, strides, padding, data_format=None):
         if data_format == 'channels_first':
@@ -31,13 +30,15 @@ class LAP_2D(pooling.Pooling2D):
         max = tf.nn.max_pool(input, ksize, strides, padding)
         softmax = tf.math.exp(-(self.alpha ** 2) * (tf.repeat(max, tf.reduce_prod(ksize), -1) - patches) ** 2)
         logit = (softmax * patches + EPSILON)
+        # channel에 따라 patch가 섞이므로 분리 후 재 결합
         logit = tf.stack(tf.split(logit, logit.shape[-1] // self.n_ch, -1), -1)
         return tf.reduce_mean(logit, -1)
 
 ########################################################################################################################
 class AdaPool(pooling.Pooling2D):
-    """ https://arxiv.org/abs/2111.00772
+    """
     AdaPool: Exponential Adaptive Pooling for Information-Retaining Downsampling
+        https://arxiv.org/abs/2111.00772
     """
     def __init__(self, pool_size=2, strides=2, padding='VALID', data_format=None, name=None, **kwargs):
         super(AdaPool, self).__init__(
@@ -46,24 +47,35 @@ class AdaPool(pooling.Pooling2D):
         )
     def build(self, input_shape):
         self.n_ch = input_shape[-1]
-        self.alpha = self.add_weight("alpha", shape=[1], initializer='HeNormal')
+        self.beta = self.add_weight(
+            "beta", shape=[1], initializer=Constant(0.5), constraint=MinMaxNorm(min_value=0.0, max_value=1.0)
+        )
+    def eMPool(self, x, axis=-1):
+        x *= tf.nn.softmax(x, axis)
+        return tf.reduce_sum(x, axis)
+
+    def eDSCWPool(self, x, axis=-1):
+        DSC = lambda x, x_: tf.math.abs(2 * (x * x_)) / (x ** 2 + x_ ** 2 + EPSILON)
+        x_ = tf.reduce_mean(x, axis, keepdims=True)
+        dsc = tf.math.exp(DSC(x, x_))
+        output = dsc * x / tf.reduce_sum(dsc, axis, keepdims=True)
+        return tf.reduce_sum(output, axis)
 
     def pool_function(self, input, ksize, strides, padding, data_format=None):
         if data_format == 'channels_first':
             input = tf.transpose(input, [0, 2, 3, 1])
         patches = tf.image.extract_patches(input, ksize, strides, [1, 1, 1, 1], padding)
-        patches = [tf.strided_slice(patches, [0, 0, 0, i], patches.shape, [1, 1, 1, self.n_ch])
-                   for i in range(self.n_ch)]
-        max = tf.reduce_max(patches, -1, keepdims=True)
-        prob = tf.math.exp(-(self.alpha ** 2) * (max - patches) ** 2)
-        prob = (prob * patches + EPSILON)
-        mean = tf.reduce_mean(prob, -1, keepdims=True)
-        mean = tf.concat(tf.split(mean, self.n_ch, 0), -1)
-        mean = tf.squeeze(mean, 0)
-        return mean
+        patches = tf.stack(tf.split(patches, patches.shape[-1] // self.n_ch, -1), -1)
+        expMAX = self.eMPool(patches)
+        expDSCw = self.eDSCWPool(patches)
+        return expMAX*self.beta + expDSCw*(1 - self.beta)
 
 ########################################################################################################################
 class SaBN(Layer):
+    """
+    Sandwich Batch Normalization: A Drop-In Replacement for Feature Distribution Heterogeneity
+        https://arxiv.org/abs/2102.11382
+    """
     def __init__(self, n_class, axis=-1):
         super(SaBN, self).__init__()
         self.n_class = n_class
