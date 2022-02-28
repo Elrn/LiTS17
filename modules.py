@@ -3,6 +3,11 @@ from tensorflow.keras.layers import *
 from layers import *
 
 ########################################################################################################################
+act = 'relu'
+
+BN_ACT = lambda x : tf.nn.relu(BatchNormalization()(x))
+ACT_BN = lambda x : BatchNormalization()(tf.nn.relu(x))
+########################################################################################################################
 def encoder(filters, kernel=3, pool=2):
     def conv_bn_act(x):
         x = Conv3D(filters, kernel, padding='same', groups=filters)(x)
@@ -55,3 +60,11 @@ def bottle_neck(filters, div=4, kernel=3):
         x = BN_ACT(x)
         return x
     return main
+
+########################################################################################################################
+def skip_connection(filters):
+    def main(x):
+        return x
+    return main
+
+########################################################################################################################
