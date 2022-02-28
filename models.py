@@ -3,6 +3,20 @@ from tensorflow.keras.layers import *
 import layers, modules
 
 ########################################################################################################################
+
+
+########################################################################################################################
+def SR(n_class, base_filters=64, depth=2):
+    """
+    Self-Regulation for Semantic Segmentation
+        https://arxiv.org/abs/2108.09702
+    """
+    exits = []
+    def main(inputs):
+        return
+    return main
+
+########################################################################################################################
 def AE(n_class, base_filters=64, depth=2):
     def main(inputs):
         filters = [base_filters*i for i in range(1, depth+2)]
@@ -19,7 +33,6 @@ def AE(n_class, base_filters=64, depth=2):
         for i in reversed(range(depth)):
             # x = decoder(filters[i])(x, skip_conn_list[i])
             x = modules.decoder(filters[i])(x)
-        ### Affine
         x = Conv3D(n_class, 1)(x)
         output = Softmax(-1)(x)
         return output
