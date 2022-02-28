@@ -66,9 +66,7 @@ class AdaPool(pooling.Pooling2D):
             input = tf.transpose(input, [0, 2, 3, 1])
         patches = tf.image.extract_patches(input, ksize, strides, [1, 1, 1, 1], padding)
         patches = tf.stack(tf.split(patches, patches.shape[-1] // self.n_ch, -1), -1)
-        expMAX = self.eMPool(patches)
-        expDSCw = self.eDSCWPool(patches)
-        return expMAX*self.beta + expDSCw*(1 - self.beta)
+        return self.eMPool(patches) * self.beta + self.eDSCWPool(patches) * (1 - self.beta)
 
 ########################################################################################################################
 class SaBN(Layer):
