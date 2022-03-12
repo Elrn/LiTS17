@@ -18,6 +18,7 @@ def encoder(filters, kernel=3, pool=2):
 
     def main(inputs):
         x = Conv3D(filters, kernel, padding='same')(inputs)
+        # x = ACT_BN(x)
         x = sep_bias(1)(x)
         x = conv_bn_act(x)
         x = conv_bn_act(x)
@@ -64,6 +65,7 @@ def bottle_neck(filters, div=4, kernel=3):
 ########################################################################################################################
 def skip_connection(filters):
     def main(x):
+
         return x
     return main
 
