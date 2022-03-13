@@ -13,31 +13,52 @@ EPSILON = tf.keras.backend.epsilon()
 # from keras.backend import categorical_crossentropy
 
 ########################################################################################################################
-def dist_CE(num_classes, distance_rate=0.04):
-    def get_mask(x):
+def Cross_Entropy(y_true, y_pred):
+    def get_mask(y_pred):
         """ return mask(0, 1) corresponding to prediction """
-        x = tf.math.argmax(x, -1)
-        x = tf.one_hot(x, num_classes)
-        return x
+        n_ch = y_pred.shape[-1]
+        y_pred = tf.math.argmax(y_pred, -1)
+        y_pred = tf.one_hot(y_pred, n_ch)
+        return y_pred
 
-    def get_distance_weight(x):
-        x = ndimage.distance_transform_edt(x < 1, distance_rate) + 1
-        return x
+    prediction_mask = get_mask(y_pred)
+    condition = (y_true - prediction_mask) < 0  # FP
+    y_pred = tf.where(condition, 1 - y_pred, y_pred)
+    loss = prediction_mask * -tf.math.log(y_pred)  # only part of prediction
+    return loss # B, H, W, C
 
-    def get_cross_entropy(y_true, y_pred):
-        mask = get_mask(y_pred)
-        condition = (y_true - mask) < 0  # FP
-        y_pred = tf.where(condition, 1 - y_pred, y_pred)
-        loss = mask * tf.math.log(y_pred)  # only part of prediction
-        return loss
+########################################################################################################################
+def dist_CE(distance_rate=0.04):
+    """
+    patch의 경우 상대적 distance 추가 필요?
+    """
+    def get_distance_weight(y_true):
+        y_true = ndimage.distance_transform_edt(y_true < 1, distance_rate) + 1
+        return y_true
+
+    def frequences_by_class(y_true):
+        def weight_fn(x):
+            # x = (-tf.math.log(x)) ** 0.5 + 0.2
+            # x = -tf.math.sin(x-1)+0.5
+            x = -x + 1.4
+            return x
+        total = np.prod(y_true.shape[:-1])
+        axis = [i for i in range(len(y_true.shape) - 1)]
+        amount_by_class = tf.reduce_sum(y_true, axis, keepdims=True)
+        # add EPSILON to prevent inf value
+        weight = weight_fn((amount_by_class + EPSILON) / (total + EPSILON))  # B, 1, 1, nC
+        weight = tf.reduce_max(weight * y_true, -1, keepdims=True)
+        return weight
 
     def main(y_true, y_pred):
-        distance_weight = get_distance_weight(y_true)
-        CE = get_cross_entropy(y_true, y_pred)
+        distance_weight_map = get_distance_weight(y_true)
+        frequency_weight_map = frequences_by_class(y_true)
+        CE = Cross_Entropy(y_true, y_pred)
 
-        loss = distance_weight * CE
+        loss = frequency_weight_map * distance_weight_map * CE
         return loss
     return main
+
 ########################################################################################################################
 def EL(y_true, y_pred, frequences=None, gamma=0.3): # B, H, W, C
     """
@@ -75,13 +96,9 @@ def EL(y_true, y_pred, frequences=None, gamma=0.3): # B, H, W, C
         DICE = DICE ** gamma
         return E(DICE, -1)
 
-    def get_CE(frequences, gamma=0.3):
-        CE = -tf.reduce_sum(y_true * tf.math.log(y_pred), axis)
-        CE = (frequences * CE) ** gamma
-        return E(CE)
-
     DICE = get_DICE()
-    CE = get_CE(frequences)
+    CE = Cross_Entropy(y_true, y_pred)
+    CE = (frequences * CE) ** gamma
     return DICE + CE
 
 ########################################################################################################################
@@ -90,10 +107,8 @@ def focal(y_true, y_pred, gamma=0.3):
     Focal Loss for Dense Object Detection
         https://arxiv.org/abs/1708.02002
     """
-    axis = [i for i in range(len(y_true.shape)-1)]
-    loss = -tf.reduce_sum(y_true * tf.math.log(y_pred), axis)
-    loss *= (1 - y_true * y_pred) ** gamma
-    return loss
+    CE = Cross_Entropy(y_true, y_pred)
+    return CE * (1 - y_true * y_pred) ** gamma
 
 ########################################################################################################################
 # class custom_loss_template(LossFunctionWrapper):
