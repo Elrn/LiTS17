@@ -99,7 +99,7 @@ def load(data, batch_size, drop=True):
     #     reshuffle_each_iteration=True
     # ).cache(
     ).map(
-        map_func=parse_fn,
+        map_func=parse_fn_slice,
         num_parallel_calls=tf.data.experimental.AUTOTUNE
     ).unbatch( # batch > unbatch > batch 시 cardinality = -2 로 설정됨
     ).batch(

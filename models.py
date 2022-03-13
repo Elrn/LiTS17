@@ -33,7 +33,7 @@ def AE(n_class, base_filters=64, depth=2):
         for i in reversed(range(depth)):
             # x = decoder(filters[i])(x, skip_conn_list[i])
             x = modules.decoder(filters[i])(x)
-        x = Conv3D(n_class, 1)(x)
+        x = modules.conv(n_class, 1)(x)
         output = Softmax(-1)(x)
         return output
     return main
