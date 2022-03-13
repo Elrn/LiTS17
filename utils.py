@@ -19,7 +19,8 @@ logging.basicConfig(
 def get_logger(name=None, level=None):
     level = [logging.DEBUG, logging.INFO, logging.WARNING, logging.ERROR, logging.CRITICAL][level]
     logger = logging.getLogger(f"{name}")
-    if level is not None: logger.setLevel(level)
+    if level is not None:
+        logger.setLevel(level)
 
     return logger
 
