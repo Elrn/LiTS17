@@ -148,7 +148,7 @@ class sep_bias(Layer):
         return config
 
 ########################################################################################################################
-class LI(tf.python.keras.layers.convolutional.Conv2D):
+class LI_2D(tf.python.keras.layers.convolutional.Conv2D):
     """
     Dilated Convolutions with Lateral Inhibitions for Semantic Image Segmentation
         https://arxiv.org/abs/2006.03708
@@ -172,7 +172,7 @@ class LI(tf.python.keras.layers.convolutional.Conv2D):
                  bias_constraint=None,
                  intensity=0.2,
                  **kwargs):
-        super(LI, self).__init__(
+        super(LI_2D, self).__init__(
             filters=filters,
             kernel_size=kernel_size,
             strides=strides,
@@ -237,44 +237,54 @@ class LI(tf.python.keras.layers.convolutional.Conv2D):
             self.bias = None
         self.built = True
 
-    def distance_measure(self, size=3):
+    def distance_factor(self, size=3, factor=1.5):
         """ Euclidean distance """
         x = np.mgrid[:size, :size]
         x = (x - size // 2) * 1.0
-
-        # x = (x ** 2).sum(0) ** 0.5
-        x = tf.norm(x, axis=0)
+        x = (x**2).sum(0) + factor
+        x = tf.Variable(1/x, dtype='float32')
         return x
 
-    def call(self, inputs, label=0, training=None):
-        input_shape = inputs.shape
+    def add_bias(self, outputs):
+        output_rank = outputs.shape.rank
+        if self.rank == 1 and self._channels_first:
+            # nn.bias_add does not accept a 1D input tensor.
+            bias = array_ops.reshape(self.bias, (1, self.filters, 1))
+            outputs += bias
+        else:
+            # Handle multiple batch dimensions.
+            if output_rank is not None and output_rank > 2 + self.rank:
+                def _apply_fn(o):
+                    return nn.bias_add(o, self.bias, data_format=self._tf_data_format)
 
-        if self._is_causal:  # Apply causal padding to inputs for Conv1D.
-            inputs = array_ops.pad(inputs, self._compute_causal_padding(inputs))
+                outputs = conv_utils.squeeze_batch_dims(
+                    outputs, _apply_fn, inner_rank=self.rank + 1)
+            else:
+                outputs = nn.bias_add(
+                    outputs, self.bias, data_format=self._tf_data_format)
+        return outputs
+
+    def reconstruction(self):
+        return
+
+    def call(self, inputs, label=0, training=None):
+        patches = tf.image.extract_patches(
+            inputs,
+            [1, self.kernel_size, self.kernel_size, 1],
+            [1, self.strides, self.strides, 1],
+            [1, self.dilation_rate, self.dilation_rate, 1],
+            padding='VALID',
+        ) # B, n_patch, n_patch, patch_size(3*3)
+        distance_factor = self.distance_factor(self.kernel_size)
+        distance_factor = tf.reshape(distance_factor, [1, 1, 1, -1]) # [k, k] > [1, 1, 1, patch_size]
+        # patch encoding
+        patches *= distance_factor
 
         outputs = self._convolution_op(inputs, self.kernel)
 
         if self.use_bias:
-            output_rank = outputs.shape.rank
-            if self.rank == 1 and self._channels_first:
-                # nn.bias_add does not accept a 1D input tensor.
-                bias = array_ops.reshape(self.bias, (1, self.filters, 1))
-                outputs += bias
-            else:
-                # Handle multiple batch dimensions.
-                if output_rank is not None and output_rank > 2 + self.rank:
-                    def _apply_fn(o):
-                        return nn.bias_add(o, self.bias, data_format=self._tf_data_format)
-                    outputs = conv_utils.squeeze_batch_dims(
-                        outputs, _apply_fn, inner_rank=self.rank + 1)
-                else:
-                    outputs = nn.bias_add(
-                        outputs, self.bias, data_format=self._tf_data_format)
+            outputs = self.add_bias(outputs)
 
-        if not context.executing_eagerly():
-            # Infer the static output shape:
-            out_shape = self.compute_output_shape(input_shape)
-            outputs.set_shape(out_shape)
 
         if self.activation is not None:
             return self.activation(outputs)
@@ -340,7 +350,6 @@ class SB(channel_attention_base):
         x = BatchNormalization()(x)
         x = tf.math.tanh(x)
         return inputs + x
-
 
 ########################################################################################################################
 ########################################################################################################################
