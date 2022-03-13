@@ -45,6 +45,15 @@ def parse_fn(vol, seg):
     seg = tf.one_hot(seg, num_class, axis=-1)
     return (vol, seg)
 
+def parse_fn_slice(vol, seg): # RANK: (4, 3)
+    vol = tf.transpose(vol, [2, 0, 1, 3])
+    vol = utils.SWN(vol, 30, [150, 25])
+
+    seg = tf.cast(seg, 'int32')
+    seg = tf.one_hot(seg, num_class, axis=-1)
+    seg = tf.transpose(seg, [2, 0, 1, 3])
+    return (vol, seg)
+
 def validation_split_fn(dataset, validation_split):
     len_dataset = tf.data.experimental.cardinality(dataset).numpy()
     valid_count = int(len_dataset * validation_split)
