@@ -137,7 +137,8 @@ class sep_bias(Layer):
 
     def call(self, inputs, label=0, training=None):
         assert self.input_dims >= label
-        return self.scale(label) * inputs + self.offset(label)
+        x = self.scale(label) * (inputs + self.offset(label))
+        return tf.nn.relu(x)
 
     def get_config(self):
         config = super().get_config()
@@ -148,154 +149,154 @@ class sep_bias(Layer):
         return config
 
 ########################################################################################################################
-class LI_2D(tf.python.keras.layers.convolutional.Conv2D):
-    """
-    Dilated Convolutions with Lateral Inhibitions for Semantic Image Segmentation
-        https://arxiv.org/abs/2006.03708
-    """
-    def __init__(self,
-                 filters,
-                 kernel_size=3,
-                 strides=1,
-                 padding='valid',
-                 data_format=None,
-                 dilation_rate=1,
-                 groups=1,
-                 activation=None,
-                 use_bias=True,
-                 kernel_initializer='glorot_uniform',
-                 bias_initializer='zeros',
-                 kernel_regularizer=None,
-                 bias_regularizer='zeros',
-                 activity_regularizer=None,
-                 kernel_constraint=None,
-                 bias_constraint=None,
-                 intensity=0.2,
-                 **kwargs):
-        super(LI_2D, self).__init__(
-            filters=filters,
-            kernel_size=kernel_size,
-            strides=strides,
-            padding=padding,
-            data_format=data_format,
-            dilation_rate=dilation_rate,
-            groups=groups,
-            activation=activations.get(activation),
-            use_bias=use_bias,
-            kernel_initializer=initializers.get(kernel_initializer),
-            bias_initializer=initializers.get(bias_initializer),
-            kernel_regularizer=regularizers.get(kernel_regularizer),
-            bias_regularizer=regularizers.get(bias_regularizer),
-            activity_regularizer=regularizers.get(activity_regularizer),
-            kernel_constraint=constraints.get(kernel_constraint),
-            bias_constraint=constraints.get(bias_constraint),
-            **kwargs
-        )
-        self.intensity = intensity
-
-    def build(self, input_shape):
-        input_shape = tensor_shape.TensorShape(input_shape)
-        if len(input_shape) != 4:
-            raise ValueError('Inputs should have rank 4. Received input '
-                             'shape: ' + str(input_shape))
-        input_channel = self._get_input_channel(input_shape)
-        if input_channel % self.groups != 0:
-            raise ValueError(
-                'The number of input channels must be evenly divisible by the number '
-                'of groups. Received groups={}, but the input has {} channels '
-                '(full input shape is {}).'.format(self.groups, input_channel,
-                                                   input_shape))
-        kernel_shape = self.kernel_size + (input_channel // self.groups, self.filters)
-
-        self.weight = self.add_weight("weight", shape=input_channel, initializer='HeNormal')
-
-        channel_axis = self._get_channel_axis()
-        if input_shape.dims[channel_axis].value is None:
-            raise ValueError('The channel dimension of the inputs '
-                             'should be defined. Found `None`.')
-        input_dim = int(input_shape[channel_axis])
-        self.input_spec = InputSpec(ndim=4, axes={channel_axis: input_dim})
-
-        self.kernel = self.add_weight(
-            name='kernel',
-            shape=kernel_shape,
-            initializer=self.kernel_initializer,
-            regularizer=self.kernel_regularizer,
-            constraint=self.kernel_constraint,
-            trainable=True,
-            dtype=self.dtype)
-        if self.use_bias:
-            self.bias = self.add_weight(
-                name='bias',
-                shape=(self.filters,),
-                initializer=self.bias_initializer,
-                regularizer=self.bias_regularizer,
-                constraint=self.bias_constraint,
-                trainable=True,
-                dtype=self.dtype)
-        else:
-            self.bias = None
-        self.built = True
-
-    def distance_factor(self, size=3, factor=1.5):
-        """ Euclidean distance """
-        x = np.mgrid[:size, :size]
-        x = (x - size // 2) * 1.0
-        x = (x**2).sum(0) + factor
-        x = tf.Variable(1/x, dtype='float32')
-        return x
-
-    def add_bias(self, outputs):
-        output_rank = outputs.shape.rank
-        if self.rank == 1 and self._channels_first:
-            # nn.bias_add does not accept a 1D input tensor.
-            bias = array_ops.reshape(self.bias, (1, self.filters, 1))
-            outputs += bias
-        else:
-            # Handle multiple batch dimensions.
-            if output_rank is not None and output_rank > 2 + self.rank:
-                def _apply_fn(o):
-                    return nn.bias_add(o, self.bias, data_format=self._tf_data_format)
-
-                outputs = conv_utils.squeeze_batch_dims(
-                    outputs, _apply_fn, inner_rank=self.rank + 1)
-            else:
-                outputs = nn.bias_add(
-                    outputs, self.bias, data_format=self._tf_data_format)
-        return outputs
-
-    def reconstruction(self):
-        return
-
-    def call(self, inputs, label=0, training=None):
-        patches = tf.image.extract_patches(
-            inputs,
-            [1, self.kernel_size, self.kernel_size, 1],
-            [1, self.strides, self.strides, 1],
-            [1, self.dilation_rate, self.dilation_rate, 1],
-            padding='VALID',
-        ) # B, n_patch, n_patch, patch_size(3*3)
-        distance_factor = self.distance_factor(self.kernel_size)
-        distance_factor = tf.reshape(distance_factor, [1, 1, 1, -1]) # [k, k] > [1, 1, 1, patch_size]
-        # patch encoding
-        patches *= distance_factor
-
-        outputs = self._convolution_op(inputs, self.kernel)
-
-        if self.use_bias:
-            outputs = self.add_bias(outputs)
-
-
-        if self.activation is not None:
-            return self.activation(outputs)
-        return outputs
-
-    def get_config(self):
-        config = super().get_config()
-        config.update({
-            "weight": self.weight,
-        })
-        return config
+# class LI_2D(tf.python.keras.layers.convolutional.Conv2D):
+#     """
+#     Dilated Convolutions with Lateral Inhibitions for Semantic Image Segmentation
+#         https://arxiv.org/abs/2006.03708
+#     """
+#     def __init__(self,
+#                  filters,
+#                  kernel_size=3,
+#                  strides=1,
+#                  padding='valid',
+#                  data_format=None,
+#                  dilation_rate=1,
+#                  groups=1,
+#                  activation=None,
+#                  use_bias=True,
+#                  kernel_initializer='glorot_uniform',
+#                  bias_initializer='zeros',
+#                  kernel_regularizer=None,
+#                  bias_regularizer='zeros',
+#                  activity_regularizer=None,
+#                  kernel_constraint=None,
+#                  bias_constraint=None,
+#                  intensity=0.2,
+#                  **kwargs):
+#         super(LI_2D, self).__init__(
+#             filters=filters,
+#             kernel_size=kernel_size,
+#             strides=strides,
+#             padding=padding,
+#             data_format=data_format,
+#             dilation_rate=dilation_rate,
+#             groups=groups,
+#             activation=activations.get(activation),
+#             use_bias=use_bias,
+#             kernel_initializer=initializers.get(kernel_initializer),
+#             bias_initializer=initializers.get(bias_initializer),
+#             kernel_regularizer=regularizers.get(kernel_regularizer),
+#             bias_regularizer=regularizers.get(bias_regularizer),
+#             activity_regularizer=regularizers.get(activity_regularizer),
+#             kernel_constraint=constraints.get(kernel_constraint),
+#             bias_constraint=constraints.get(bias_constraint),
+#             **kwargs
+#         )
+#         self.intensity = intensity
+#
+#     def build(self, input_shape):
+#         input_shape = tensor_shape.TensorShape(input_shape)
+#         if len(input_shape) != 4:
+#             raise ValueError('Inputs should have rank 4. Received input '
+#                              'shape: ' + str(input_shape))
+#         input_channel = self._get_input_channel(input_shape)
+#         if input_channel % self.groups != 0:
+#             raise ValueError(
+#                 'The number of input channels must be evenly divisible by the number '
+#                 'of groups. Received groups={}, but the input has {} channels '
+#                 '(full input shape is {}).'.format(self.groups, input_channel,
+#                                                    input_shape))
+#         kernel_shape = self.kernel_size + (input_channel // self.groups, self.filters)
+#
+#         self.weight = self.add_weight("weight", shape=input_channel, initializer='HeNormal')
+#
+#         channel_axis = self._get_channel_axis()
+#         if input_shape.dims[channel_axis].value is None:
+#             raise ValueError('The channel dimension of the inputs '
+#                              'should be defined. Found `None`.')
+#         input_dim = int(input_shape[channel_axis])
+#         self.input_spec = InputSpec(ndim=4, axes={channel_axis: input_dim})
+#
+#         self.kernel = self.add_weight(
+#             name='kernel',
+#             shape=kernel_shape,
+#             initializer=self.kernel_initializer,
+#             regularizer=self.kernel_regularizer,
+#             constraint=self.kernel_constraint,
+#             trainable=True,
+#             dtype=self.dtype)
+#         if self.use_bias:
+#             self.bias = self.add_weight(
+#                 name='bias',
+#                 shape=(self.filters,),
+#                 initializer=self.bias_initializer,
+#                 regularizer=self.bias_regularizer,
+#                 constraint=self.bias_constraint,
+#                 trainable=True,
+#                 dtype=self.dtype)
+#         else:
+#             self.bias = None
+#         self.built = True
+#
+#     def distance_factor(self, size=3, factor=1.5):
+#         """ Euclidean distance """
+#         x = np.mgrid[:size, :size]
+#         x = (x - size // 2) * 1.0
+#         x = (x**2).sum(0) + factor
+#         x = tf.Variable(1/x, dtype='float32')
+#         return x
+#
+#     def add_bias(self, outputs):
+#         output_rank = outputs.shape.rank
+#         if self.rank == 1 and self._channels_first:
+#             # nn.bias_add does not accept a 1D input tensor.
+#             bias = array_ops.reshape(self.bias, (1, self.filters, 1))
+#             outputs += bias
+#         else:
+#             # Handle multiple batch dimensions.
+#             if output_rank is not None and output_rank > 2 + self.rank:
+#                 def _apply_fn(o):
+#                     return nn.bias_add(o, self.bias, data_format=self._tf_data_format)
+#
+#                 outputs = conv_utils.squeeze_batch_dims(
+#                     outputs, _apply_fn, inner_rank=self.rank + 1)
+#             else:
+#                 outputs = nn.bias_add(
+#                     outputs, self.bias, data_format=self._tf_data_format)
+#         return outputs
+#
+#     def reconstruction(self):
+#         return
+#
+#     def call(self, inputs, label=0, training=None):
+#         patches = tf.image.extract_patches(
+#             inputs,
+#             [1, self.kernel_size, self.kernel_size, 1],
+#             [1, self.strides, self.strides, 1],
+#             [1, self.dilation_rate, self.dilation_rate, 1],
+#             padding='VALID',
+#         ) # B, n_patch, n_patch, patch_size(3*3)
+#         distance_factor = self.distance_factor(self.kernel_size)
+#         distance_factor = tf.reshape(distance_factor, [1, 1, 1, -1]) # [k, k] > [1, 1, 1, patch_size]
+#         # patch encoding
+#         patches *= distance_factor
+#
+#         outputs = self._convolution_op(inputs, self.kernel)
+#
+#         if self.use_bias:
+#             outputs = self.add_bias(outputs)
+#
+#
+#         if self.activation is not None:
+#             return self.activation(outputs)
+#         return outputs
+#
+#     def get_config(self):
+#         config = super().get_config()
+#         config.update({
+#             "weight": self.weight,
+#         })
+#         return config
 
 ########################################################################################################################
 class channel_attention_base(Layer):
