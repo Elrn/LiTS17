@@ -8,7 +8,8 @@ import utils
 import numpy as np
 import re
 import logging
-
+from tensorflow.keras import backend
+from keras.utils import io_utils
 
 class monitor(tf.keras.callbacks.Callback):
     def __init__(self, save_dir, dataset=None, fig_size_rate=3):
@@ -18,7 +19,32 @@ class monitor(tf.keras.callbacks.Callback):
         self.fig_size_rate = fig_size_rate
     #
     def on_epoch_end(self, epoch, logs=None):
-        self.reconstuction_plot(epoch)
+        # self.reconstuction_plot(epoch, logs)
+        self.slices_plot(epoch, logs)
+
+    def slices_plot(self, epoch, logs=None):
+        cols, rows = 2, 4
+        figure, axs = plt.subplots(cols, rows, figsize=(rows * 3, cols * 3))
+        figure.suptitle(f'Epoch: "{epoch}"', fontsize=10)
+        figure.tight_layout()
+        for vol, seg in self.dataset.skip(15).take(1):
+            pred = self.model(vol)
+            vol, seg, pred = np.squeeze(vol), np.squeeze(tf.argmax(seg, -1)), np.squeeze(tf.argmax(pred, -1))
+
+        for c in range(cols):
+            for r in range(rows):
+                axs[c][r].set_xticks([])
+                axs[c][r].set_yticks([])
+                if c == 0:
+                    axs[c][r].imshow(vol[r], cmap='gray')
+                    axs[c][r].imshow(seg[r], cmap='Greens', alpha=0.5)
+                else:
+                    axs[c][r].imshow(vol[r], cmap='gray')
+                    axs[c][r].imshow(pred[r], cmap='Reds', alpha=0.5)
+
+        save_path = os.path.join(self.save_dir, f'{epoch}.png')
+        plt.savefig(save_path, dpi=200)
+        plt.close('all')
 
     def patch_wise_plot(self, epoch):
         ncols = tf.data.experimental.cardinality(self.dataset).numpy() * 2
@@ -152,6 +178,31 @@ class continue_training(tf.keras.callbacks.Callback):
             # If there are more than one file having latest modified time, return
             # the file path with the largest file name.
             return file_path_with_largest_file_name
+
+
+class setLR(Callback):
+    def __init__(self, lr, verbose=0):
+        super(setLR, self).__init__()
+        self.lr = lr
+        self.verbose = verbose
+
+    def on_epoch_begin(self, epoch, logs=None):
+        if not hasattr(self.model.optimizer, 'lr'):
+            raise ValueError('Optimizer must have a "lr" attribute.')
+
+        if not isinstance(self.lr, (tf.Tensor, float, np.float32, np.float64)):
+            raise ValueError('The output of the "schedule" function '
+                             f'should be float. Got: {self.lr}')
+        if isinstance(self.lr, tf.Tensor) and not self.lr.dtype.is_floating:
+            raise ValueError(
+                f'The dtype of `lr` Tensor should be float. Got: {self.lr.dtype}')
+        backend.set_value(self.model.optimizer.lr, backend.get_value(self.lr))
+        if self.verbose > 0:
+            logging.info(
+                f'\nEpoch {epoch + 1}: LearningRateScheduler setting learning '
+                f'rate to {self.lr}.')
+            logs = logs or {}
+            logs['lr'] = backend.get_value(self.model.optimizer.lr)
 
 # plateau = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=5, min_lr=0.001)
 
