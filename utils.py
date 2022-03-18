@@ -107,7 +107,6 @@ def mkdir(path):
         os.makedirs(path)
     except OSError as error:
         print(error)
-#
 
 # date = datetime.datetime.today().strftime('%Y-%m-%d_%Hh%Mm%Ss')
 
