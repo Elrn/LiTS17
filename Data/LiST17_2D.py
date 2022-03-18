@@ -27,22 +27,15 @@ import cv2
 import utils
 
 num_class = 3
-patch_size = 40
-input_shape = [patch_size, patch_size, patch_size, 1]
+input_shape = [160, 160, 1] # Z: 200
 ########################################################################################################################
-def parse_fn(vol, seg):
-    size = [1]+input_shape
-
-    vol = tf.reshape(vol, [1] + vol.shape)  # add batch
+def parse_fn(vol, seg): # RANK: (4, 3)
+    vol = tf.transpose(vol, [2, 0, 1, 3])
     vol = utils.SWN(vol, 30, [150, 25])
-    vol = tf.extract_volume_patches(input=vol, ksizes=size, strides=size, padding='VALID')
-    vol = tf.reshape(vol, [-1] + input_shape)
 
-    seg = tf.reshape(seg, [1] + seg.shape + [1]) # add batch and channel
-    seg = tf.extract_volume_patches(input=seg, ksizes=size, strides=size, padding='VALID')
-    seg = tf.reshape(seg, [-1] + input_shape[:-1])  # except channel for one hot
     seg = tf.cast(seg, 'int32')
     seg = tf.one_hot(seg, num_class, axis=-1)
+    seg = tf.transpose(seg, [2, 0, 1, 3])
     return (vol, seg)
 
 def validation_split_fn(dataset, validation_split):
@@ -57,23 +50,11 @@ def build(batch_size, validation_split=0.1):
     print(f'[Dataset] load:"{basename(file_path)}", batch size:"{batch_size}", split:"{validation_split}"')
     with np.load(file_path) as data:
         dataset = load((data['vol'], data['seg']), batch_size)
-        if validation_split is not None and validation_split != 0:
+        if validation_split is not None and validation_split is not 0:
             return validation_split_fn(dataset, validation_split)
         else:
             return dataset, None
 
-"""
-- BATCH Drop Reminder = False
-[!] ERR Raised: Non-OK-status: GpuLaunchKernel ... INTERNAL: unspecified launch failure
-[!] metrics 적용 가능
-
-https://stackoverflow.com/questions/59068494/program-crashed-in-the-last-step-in-test-tensorflow-gpu-2-0-0/59971264#59971264
-the problem is related to the batch size. I am using nvidia docker 19.12 and data generator. 
-The code works well with one gpu and the problem happened only with mirroredstrategy in the model.predict.
-When the total number of data can not be divided by the batch_size perfectly, the error happens. 
-The 3rd batch will have only one data and brings a problem.
-The solution is either throw away the last data, or in my case, add some dummy data to fill up the last batch.
-"""
 def load(data, batch_size, drop=True):
     return tf.data.Dataset.from_tensor_slices(
         data
@@ -83,8 +64,8 @@ def load(data, batch_size, drop=True):
     #     lambda x : tf.data.Dataset(x).map(parse_fn, num_parallel_calls=tf.data.experimental.AUTOTUNE),
     #     cycle_length = tf.data.experimental.AUTOTUNE,
     #     num_parallel_calls = tf.data.experimental.AUTOTUNE
-    ).repeat(
-        count=3
+    # ).repeat(
+    #     count=3
     # ).shuffle(
     #     4,
     #     reshuffle_each_iteration=True
