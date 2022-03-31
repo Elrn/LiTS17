@@ -32,7 +32,7 @@ def get_logger(name=None, level=None):
 ########################################################################################################################
 safe_divide = lambda a, b : np.divide(a, b, out=np.zeros_like(a), where=b!=0)
 to_list = lambda x: [x] if type(x) is not list else x
-
+get_datetime = lambda :datetime.datetime.now().strftime('%Y-%m-%d_%Hh%Mm')
 ########################################################################################################################
 def checkpoint_exists(filepath):
     """Returns whether the checkpoint `filepath` refers to exists."""

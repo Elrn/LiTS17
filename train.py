@@ -29,12 +29,20 @@ if gpus:
 
 # init
 base_dir = os.path.dirname(os.path.realpath(__file__)) # getcwd()
+log_dir = utils.join_dir([base_dir, 'log'])
 dirs = ['plt', 'checkpoint']
-paths = [utils.join_dir([base_dir, 'log', dir]) for dir in dirs]
+paths = [utils.join_dir([log_dir, dir]) for dir in dirs]
 [utils.mkdir(path) for path in paths]
 plt_dir, ckpt_dir = paths
 
-ckpt_file_name = 'EP_{epoch}, L_{loss:.3f}, P_{Precision:.3f}, R_{Recall:.3f}, vP_{val_Precision:.3f}, vR_{val_Recall:.3f}.hdf5'
+### log
+log = logging.getLogger('root')
+file_handler = logging.FileHandler(utils.join_dir([log_dir, utils.get_datetime()+'.txt']))
+# fh.setLevel(logging.DEBUG)
+log.addHandler(file_handler)
+
+### ckpt
+ckpt_file_name = 'EP_{epoch}, L_{loss:.3f}, P_{Precision:.3f}, R_{Recall:.3f}, J_{JSC:.3f}, vP_{val_Precision:.3f}, vR_{val_Recall:.3f}, vJ_{val_JSC:.3f}.hdf5'
 # ckpt_file_name = 'EP_{epoch}, L_{loss:.4f}, vL_{val_loss:.4f}.hdf5'
 ckpt_file_path = utils.join_dir([ckpt_dir, ckpt_file_name])
 
@@ -84,9 +92,10 @@ history = model.fit(
         ModelCheckpoint(ckpt_file_path, monitor='loss', save_best_only=True, save_weights_only=False, save_freq='epoch'),
         # EarlyStopping(monitor='loss', min_delta=0, patience=5),
         # ReduceLROnPlateau(monitor='val_loss', factor=0.1, patience=2, verbose=0, min_delta=0.0001, cooldown=0, min_lr=0),
-        callbacks.setLR(0.00004),
+        callbacks.setLR(0.0001),
         callbacks.monitor(plt_dir, dataset=test_dataset)
     ]
 )
+file_handler.close()
 # date = datetime.datetime.today().strftime('%Y-%m-%d_%Hh%Mm%Ss')
 # utils.save_history(history, utils.join_dir([base_dir, 'log', date]))

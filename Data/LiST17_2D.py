@@ -31,7 +31,7 @@ input_shape = [160, 160, 1] # Z: 200
 ########################################################################################################################
 def parse_fn(vol, seg): # RANK: (4, 3)
     vol = tf.transpose(vol, [2, 0, 1, 3])
-    vol = utils.SWN(vol, 30, [150, 25])
+    vol = utils.SWN(vol, 50, [200, 25])
 
     seg = tf.cast(seg, 'int32')
     seg = tf.one_hot(seg, num_class, axis=-1)
