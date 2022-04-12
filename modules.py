@@ -27,8 +27,8 @@ def encoder(filters, kernel=3, pool=2):
 
     def main(inputs):
         x = conv(filters, kernel, padding='same')(inputs)
-        # x = ACT_BN(x)
-        x = sep_bias(1)(x)
+        x = BN_ACT(x)
+        # x = sep_bias(1)(x)
         x = conv_bn_act(x)
         skip = conv_bn_act(x)
         x = pooling(pool, pool)(skip)
@@ -81,6 +81,7 @@ def skip_connection(filters, kernel=5):
         x = BN_ACT(x)
         x = conv(filters, 3, padding='same', groups=filters)(x)
         x = conv(filters, 3, padding='same', groups=filters)(x)
+        x = BN_ACT(x)
         return x
     return main
 
