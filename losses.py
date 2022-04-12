@@ -34,8 +34,14 @@ def cross_entropy(y_true, y_pred, gamma=1.7):
     loss = loss ** gamma
     return loss # B, H, W, C
 
+
+def CE(y_true, y_pred):
+    loss = cross_entropy(y_true, y_pred)
+    tf.reduce_mean(loss)
+    return loss  # B, H, W, C
+
 ########################################################################################################################
-def segCE(distance_rate=0.04):
+def WCE(distance_rate=0.04):
     """
     Positive Loss의 경우 background 를 넓혀 loss를 줄이려는 경향을 보임
     FN Loss의 경우 FP 부분을 pred_count에 반영할 것인지 여부 확인
@@ -73,7 +79,7 @@ def segCE(distance_rate=0.04):
         def weight_fn(x):
             # x = -tf.math.log(0.96 * x + 0.03)
             # x = x ** 0.55 + 0.17
-            condition = tf.math.greater(x, 0.)
+            condition = tf.math.greater(x, 0.) # as small object
 
             x = tf.math.abs(x)
             weight = tf.where(condition, tf.math.exp(x ** 1.3), tf.math.exp(x ** 1.7))
@@ -97,7 +103,7 @@ def segCE(distance_rate=0.04):
         freq_weight = tf.expand_dims(freq_weight, -1)
         return freq_weight
 
-    def get_scale_factor(y_true, y_pred, gamma=0.5):
+    def get_scale_factor(y_true, y_pred, gamma=0.3):
         """
         small object의 모든 pixel을 FP로 산정한 값이기 때문에 gamma 값을 1보다 높이는 것이 옳다.
         :param gamma: 높을 수록 작은 object에 대한 prediction loss 가 높아진다.
@@ -118,27 +124,29 @@ def segCE(distance_rate=0.04):
         condition = tf.equal(scaled_map, 0.)
         scaled_map = tf.where(condition, 1., scaled_map)
         return scaled_map
-    # def existance_CE(y_true, y_pred):
-    #     """
-    #     잘못된 predictiion 에 대해 penalty
-    #     Background 같은 label의 FN에 penalty여부 효과 확인 요망
-    #     """
-    #     def weight_fn(x, gamma=2.0):
-    #         x = (x - 1.) ** 2
-    #         return gamma * x + 1
-    #
-    #     # label = tf.reshape(tf.argmax(y_true, -1), [-1])
-    #     # pred = tf.reshape(tf.argmax(y_pred, -1), [-1])
-    #     # CM = tf.math.confusion_matrix(label, pred)
-    #     # pred_count_by_class = tf.cast(tf.reduce_sum(CM, 0), tf.float32)
-    #     TP = y_true * get_mask(y_pred)
-    #     TP_count_by_class = tf.reduce_sum(TP, axis)
-    #     label_count_by_class = tf.reduce_sum(y_true, axis)
-    #     # if label count 0 then get max weight
-    #     ratio = weight_fn(tf.math.divide_no_nan(TP_count_by_class, label_count_by_class)) # 1 +- ratio by class
-    #     FN = tf.where(tf.equal(y_true - get_mask(y_pred), 1), 1., 0.)
-    #     FN = tf.clip_by_value(FN * y_pred, EPSILON, 1. - EPSILON)
-    #     return ratio * -tf.math.log(FN)
+
+    def existance_CE(y_true, y_pred):
+        """
+        잘못된 predictiion 에 대해 penalty
+        Background 같은 label의 FN에 penalty여부 효과 확인 요망
+        """
+        def weight_fn(x, gamma=2.0):
+            x = (x - 1.) ** 2
+            return gamma * x + 1
+
+        axis = [i for i in range(tf.rank(y_true)-1)]  # until channel axis
+        # label = tf.reshape(tf.argmax(y_true, -1), [-1])
+        # pred = tf.reshape(tf.argmax(y_pred, -1), [-1])
+        # CM = tf.math.confusion_matrix(label, pred)
+        # pred_count_by_class = tf.cast(tf.reduce_sum(CM, 0), tf.float32)
+        TP = y_true * get_mask(y_pred)
+        TP_count_by_class = tf.reduce_sum(TP, axis)
+        label_count_by_class = tf.reduce_sum(y_true, axis)
+        # if label count 0 then get max weight
+        ratio = weight_fn(tf.math.divide_no_nan(TP_count_by_class, label_count_by_class)) # 1 +- ratio by class
+        FN = tf.where(tf.equal(y_true - get_mask(y_pred), 1), 1., 0.)
+        FN = tf.clip_by_value(FN * y_pred, EPSILON, 1. - EPSILON)
+        return ratio * -tf.math.log(FN)
 
     def main(y_true, y_pred):
         loss = cross_entropy(y_true, y_pred)
