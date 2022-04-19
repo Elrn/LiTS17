@@ -149,6 +149,60 @@ class sep_bias(Layer):
         return config
 
 ########################################################################################################################
+class global_attention(Layer):
+    """
+    Global Attention Mechanism: Retain Information to Enhance Channel-Spatial Interactions
+        https://arxiv.org/abs/2112.05561
+    :return:
+    """
+    def __init__(self, kernel=7, groups=1, squeeze_rate=0.7):
+        super(global_attention, self).__init__()
+        self.squeeze_rate = squeeze_rate
+        self.kernel = kernel
+        self.groups = groups
+
+    def build(self, input_shape):
+        rank = tf.rank(input_shape)
+        self.GAP = GlobalAveragePooling2D if rank == 4 else GlobalAveragePooling3D
+        self.GMP = GlobalMaxPooling2D if rank == 4 else GlobalMaxPooling3D
+
+        self.activation = tf.nn.relu
+
+        self.squeeze = Dense(int(input_shape[-1] * self.squeeze_rate))
+        self.extend = Dense(input_shape[-1], activation='relu')
+
+        conv = Conv2D if rank == 4 else Conv3D
+        self.spatial_convolution = conv(1, self.kernel, padding='same', groups=self.groups)
+
+    def channel_attention(self, x):
+        def main(x):
+            x = self.squeeze(x)
+            x = self.extend(x)
+            x = self.activation(x)
+            return x
+        GAP = main(self.GAP()(x))
+        GMP = main(self.GMP()(x))
+
+        return tf.nn.sigmoid(GAP + GMP)
+
+    def spatial_attention(self, x):
+        GAP = tf.reduce_mean(x[0], -1)
+        GMP = tf.reduce_max(x[1], -1)
+
+        spatial_atttention = self.spatial_convolution(tf.concat([GAP, GMP], -1))
+        spatial_atttention = tf.nn.sigmoid(spatial_atttention)
+        return spatial_atttention
+
+    def call(self, inputs, label=0, training=None):
+        channel_attention = self.channel_attention(inputs)
+        x = inputs * channel_attention
+
+        spatial_attention = self.spatial_attention(x)
+        x *= spatial_attention
+
+        return x + inputs
+
+########################################################################################################################
 # class LI_2D(tf.python.keras.layers.convolutional.Conv2D):
 #     """
 #     Dilated Convolutions with Lateral Inhibitions for Semantic Image Segmentation
