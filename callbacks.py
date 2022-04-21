@@ -23,6 +23,7 @@ class monitor(tf.keras.callbacks.Callback):
         self.slices_plot(epoch, logs)
 
     def slices_plot(self, epoch, logs=None):
+        epoch += 1
         cols, rows = 2, 4
         figure, axs = plt.subplots(cols, rows, figsize=(rows * 3, cols * 3))
         figure.suptitle(f'Epoch: "{epoch}"', fontsize=10)
@@ -47,11 +48,12 @@ class monitor(tf.keras.callbacks.Callback):
         plt.close('all')
 
     def patch_wise_plot(self, epoch):
+        epoch += 1
         ncols = tf.data.experimental.cardinality(self.dataset).numpy() * 2
         nrows = self.dataset.element_spec[0].shape[0]
 
         figure, axs = plt.subplots(ncols, nrows, figsize=(nrows * 3, ncols * 3))
-        # figure.suptitle(f'{epoch}', fontsize=10)
+        figure.suptitle(f'{epoch}', fontsize=10)
         figure.tight_layout()
         slice = self.dataset.element_spec[0].shape[2] // 2
         # cmap = self.get_cmap()
@@ -112,12 +114,17 @@ class monitor(tf.keras.callbacks.Callback):
         return matplotlib.colors.LinearSegmentedColormap.from_list('rb_cmap', [transparent, white, red], 256)
 #
 
-class continue_training(tf.keras.callbacks.Callback):
+class load_weights(tf.keras.callbacks.Callback):
     def __init__(self, filepath):
-        super(continue_training, self).__init__()
+        super(load_weights, self).__init__()
         self.filepath = os.fspath(filepath) if isinstance(filepath, os.PathLike) else filepath
 
-    def on_train_begin(self, logs=None):
+    def on_train_batch_begin(self, logs=None):
+    # def on_predict_batch_begin(self, logs=None):
+    # def on_predict_begin(self, logs=None):
+        self.load_weights()
+
+    def load_weights(self):
         filepath_to_load = (self._get_most_recently_modified_file_matching_pattern(self.filepath))
         if (filepath_to_load is not None and self._checkpoint_exists(filepath_to_load)):
             try:
@@ -125,8 +132,9 @@ class continue_training(tf.keras.callbacks.Callback):
                 print(f'[!] Saved Check point is restored from "{filepath_to_load}".')
             except (IOError, ValueError) as e:
                 raise ValueError(f'Error loading file from {filepath_to_load}. Reason: {e}')
-    #
-    def _checkpoint_exists(self, filepath):
+
+    @staticmethod
+    def _checkpoint_exists(filepath):
         """Returns whether the checkpoint `filepath` refers to exists."""
         if filepath.endswith('.h5'):
             return tf.io.gfile.exists(filepath)
@@ -134,8 +142,9 @@ class continue_training(tf.keras.callbacks.Callback):
         tf_weights_only_checkpoint_exists = tf.io.gfile.exists(
             filepath + '.index')
         return tf_saved_model_exists or tf_weights_only_checkpoint_exists
-    #
-    def _get_most_recently_modified_file_matching_pattern(self, pattern):
+
+    @staticmethod
+    def _get_most_recently_modified_file_matching_pattern(pattern):
         dir_name = os.path.dirname(pattern)
         base_name = os.path.basename(pattern)
         base_name_regex = '^' + re.sub(r'{.*}', r'.*', base_name) + '$'
