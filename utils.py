@@ -27,72 +27,29 @@ def get_logger(name=None, level=None):
 # stream_hander = logging.StreamHandler()
 # stream_hander.setFormatter(formatter)
 # logger.addHandler(stream_hander)
+########################################################################################################################
+def tf_init():
+    os.putenv('TF_GPU_ALLOCATOR', 'cuda_malloc_async')
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+    logging.getLogger('matplotlib.font_manager').disabled = True
+    logging.getLogger('PIL.PngImagePlugin').disabled = True
+    logging.getLogger('h5py._conv').disabled = True
 
+    gpus = tf.config.experimental.list_physical_devices('GPU')
+    if gpus:
+        try:
+            for gpu in gpus:
+                tf.config.experimental.set_memory_growth(gpu, True)
+            logical_gpus = tf.config.experimental.list_logical_devices('GPU')
+            print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPUs")
+        except RuntimeError as e:
+            print(e)
 
 ########################################################################################################################
 safe_divide = lambda a, b : np.divide(a, b, out=np.zeros_like(a), where=b!=0)
 to_list = lambda x: [x] if type(x) is not list else x
 get_datetime = lambda :datetime.datetime.now().strftime('%Y-%m-%d_%Hh%Mm')
-########################################################################################################################
-def checkpoint_exists(filepath):
-    """Returns whether the checkpoint `filepath` refers to exists."""
-    if filepath.endswith('.h5'):
-        return tf.io.gfile.exists(filepath)
-    tf_saved_model_exists = tf.io.gfile.exists(filepath)
-    tf_weights_only_checkpoint_exists = tf.io.gfile.exists(
-        filepath + '.index')
-    return tf_saved_model_exists or tf_weights_only_checkpoint_exists
-
-def get_checkpoint(filepath, epoch=None):
-    # filesystem
-    filepath = os.fspath(filepath) if isinstance(filepath, os.PathLike) else filepath
-    def _get_most_recently_modified_file_matching_pattern(pattern):
-        dir_name = os.path.dirname(pattern)
-        base_name = os.path.basename(pattern)
-        base_name_regex = '^' + re.sub(r'{.*}', r'.*', base_name) + '$'
-
-        latest_tf_checkpoint = tf.train.latest_checkpoint(dir_name)
-        if latest_tf_checkpoint is not None and re.match(
-                base_name_regex, os.path.basename(latest_tf_checkpoint)):
-            return latest_tf_checkpoint
-
-        latest_mod_time = 0
-        file_path_with_latest_mod_time = None
-        n_file_with_latest_mod_time = 0
-        file_path_with_largest_file_name = None
-
-        if tf.io.gfile.exists(dir_name):
-            for file_name in os.listdir(dir_name):
-                # Only consider if `file_name` matches the pattern.
-                if re.match(base_name_regex, file_name):
-                    file_path = os.path.join(dir_name, file_name)
-                    mod_time = os.path.getmtime(file_path)
-                    if (file_path_with_largest_file_name is None or
-                            # epoch이 더 길어지므로 last saved model을 저장
-                            file_path > file_path_with_largest_file_name):
-                        file_path_with_largest_file_name = file_path
-                    if mod_time > latest_mod_time:
-                        latest_mod_time = mod_time
-                        file_path_with_latest_mod_time = file_path
-                        # In the case a file with later modified time is found, reset
-                        # the counter for the number of files with latest modified time.
-                        n_file_with_latest_mod_time = 1
-                    elif mod_time == latest_mod_time:
-                        # In the case a file has modified time tied with the most recent,
-                        # increment the counter for the number of files with latest modified
-                        # time by 1.
-                        n_file_with_latest_mod_time += 1
-
-        if n_file_with_latest_mod_time == 1:
-            # Return the sole file that has most recent modified time.
-            return file_path_with_latest_mod_time
-        else:
-            # If there are more than one file having latest modified time, return
-            # the file path with the largest file name.
-            return file_path_with_largest_file_name
-
-    return _get_most_recently_modified_file_matching_pattern(filepath)
-
 ########################################################################################################################
 def join_dir(dirs:list):
     if len(dirs) == 0:
