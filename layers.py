@@ -4,6 +4,7 @@ from tensorflow.python.keras.layers import pooling
 from tensorflow.keras.constraints import *
 from tensorflow.keras.initializers import *
 
+import operator
 from tensorflow.python.keras.utils import conv_utils
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import activations
@@ -146,6 +147,72 @@ class sep_bias(Layer):
             "scale": self.scale,
             "offset": self.offset,
         })
+        return config
+
+########################################################################################################################
+class flat(Layer):
+    """
+    flat inputs except channel dimension.
+    It function like layers.Flatten except channel dimension
+
+    example:
+    x = tf.constant([1, 3, 3, 2])
+    flat()(x).shape
+    # >>> [1, 9, 2]
+    """
+    def __init__(self, data_format=None, **kwargs):
+        super(flat, self).__init__(**kwargs)
+        self.data_format = conv_utils.normalize_data_format(data_format)
+        self.input_spec = InputSpec(min_ndim=1)
+        self._channels_first = self.data_format == 'channels_first'
+
+    def call(self, inputs):
+        if self._channels_first:
+            rank = inputs.shape.rank
+            if rank and rank > 1:
+                # Switch to channels-last format.
+                permutation = [0]
+                permutation.extend(range(2, rank))
+                permutation.append(1)
+                inputs = tf.transpose(inputs, perm=permutation)
+
+        if tf.executing_eagerly():
+            flattened_shape = tf.constant([inputs.shape[0], -1, inputs.shape[-1]])
+            return tf.reshape(inputs, flattened_shape)
+        else:
+            input_shape = inputs.shape
+            rank = input_shape.rank
+            if rank == 1:
+                return tf.expand_dims(inputs, axis=1)
+            else:
+                batch_dim = tf.compat.dimension_value(input_shape[0])
+                non_batch_dims = input_shape[1:]
+                # Reshape in a way that preserves as much shape info as possible.
+                if non_batch_dims.is_fully_defined():
+                    last_dim = int(functools.reduce(operator.mul, non_batch_dims[:-1]))
+                    flattened_shape = tf.constant([-1, last_dim, non_batch_dims[-1]])
+                elif batch_dim is not None:
+                    flattened_shape = tf.constant([int(batch_dim), -1, input_shape[-1]])
+                else:
+                    flattened_shape = [tf.shape(inputs)[0], -1, tf.shape(inputs)[-1]]
+                return tf.reshape(inputs, flattened_shape)
+
+    def compute_output_shape(self, input_shape):
+        input_shape = tf.TensorShape(input_shape).as_list()
+        if not input_shape:
+            output_shape = tf.TensorShape([1])
+        else:
+            output_shape = [input_shape[0]]
+        if np.all(input_shape[1:]):
+            output_shape += [np.prod(input_shape[1:-1], dtype=int)]
+        else:
+            output_shape += [None]
+        output_shape += input_shape[-1]
+        return tf.TensorShape(output_shape)
+
+    def get_config(self):
+        config = super(flat, self).get_config()
+        config.update({'data_format': self.data_format})
         return config
 
 ########################################################################################################################
