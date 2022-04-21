@@ -7,7 +7,6 @@ import numpy as np
 ########################################################################################################################
 """ Symmetrity """
 ########################################################################################################################
-
 class _BASE(tf.keras.metrics.Metric):
     def __init__(self, num_classes, argmax=True, name=None, dtype=None, **kwargs):
         super(_BASE, self).__init__(name=name, dtype=dtype, **kwargs)
@@ -18,11 +17,22 @@ class _BASE(tf.keras.metrics.Metric):
             shape=(num_classes, num_classes),
             initializer=tf.compat.v1.zeros_initializer)
 
+    def band_part_except_diag(self, CM, mode=0):
+        if mode == 1:
+            Upper = tf.linalg.band_part(CM, 0, -1)
+            condition = tf.equal(Upper, 0)
+        elif mode == -1:
+            Lower = tf.linalg.band_part(CM, -1, 0)
+            condition = tf.equal(Lower, 0)
+        else:
+            raise ValueError(f'mode value must be 1 or -1, but accepted {mode}')
+        return tf.where(condition, CM, 0)
+
     def process_confusion_matrix(self):
         self.TN = self.CM[0][0]
         self.TP = tf.reduce_sum(tf.linalg.diag_part(self.CM)[1:])
-        self.FN = tf.reduce_sum(self.CM[0][1:])
-        self.FP = tf.reduce_sum(tf.linalg.set_diag(self.CM, np.zeros([self.num_classes]))[1:])
+        self.FP = tf.reduce_sum(self.CM[0][1:])
+        self.FN = tf.reduce_sum(tf.linalg.set_diag(self.CM, np.zeros([self.num_classes]))[1:])
 
     def update_state(self, y_true, y_pred, sample_weight=None):
         y_true = tf.cast(y_true, self._dtype) # None 일 경우 float 할당
@@ -56,6 +66,16 @@ class _BASE(tf.keras.metrics.Metric):
         config = {'num_classes': self.num_classes}
         base_config = super(_BASE, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
+
+########################################################################################################################
+class TP_leison(_BASE):
+    """ for lesion only """
+    def __init__(self, num_classes, name='TP_leison', dtype=None, **kwargs):
+        super(TP_leison, self).__init__(num_classes=num_classes, name=name, dtype=dtype, **kwargs)
+
+    def result(self):
+        super().result()
+        return self.CM[2][-1] / tf.reduce_sum(self.CM[2])
 
 ########################################################################################################################
 class DSC(_BASE):
