@@ -126,7 +126,7 @@ class load_weights(tf.keras.callbacks.Callback):
 
     def load_weights(self):
         filepath_to_load = (self._get_most_recently_modified_file_matching_pattern(self.filepath))
-        if (filepath_to_load is not None and self._checkpoint_exists(filepath_to_load)):
+        if (filepath_to_load is not None and self.checkpoint_exists(filepath_to_load)):
             try:
                 self.model.load_weights(filepath_to_load)
                 print(f'[!] Saved Check point is restored from "{filepath_to_load}".')
@@ -134,7 +134,7 @@ class load_weights(tf.keras.callbacks.Callback):
                 raise ValueError(f'Error loading file from {filepath_to_load}. Reason: {e}')
 
     @staticmethod
-    def _checkpoint_exists(filepath):
+    def checkpoint_exists(filepath):
         """Returns whether the checkpoint `filepath` refers to exists."""
         if filepath.endswith('.h5'):
             return tf.io.gfile.exists(filepath)
