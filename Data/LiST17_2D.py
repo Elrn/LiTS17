@@ -16,15 +16,18 @@ maximum symmetric surface distance (MSSD).
 
 """
 volume: ?, 512, 512
-segmentation: ?, 512, 512
-"""
-
-import tensorflow as tf
+segmentation: ?, 512, 512import tensorflow as tf
 from os.path import basename
 
 import numpy as np
 import cv2
 import utils
+"""
+
+import tensorflow as tf
+import utils
+from os.path import basename
+import numpy as np
 
 num_class = 3
 input_shape = [160, 160, 1] # Z: 200
@@ -50,7 +53,7 @@ def build(batch_size, validation_split=0.1):
     print(f'[Dataset] load:"{basename(file_path)}", batch size:"{batch_size}", split:"{validation_split}"')
     with np.load(file_path) as data:
         dataset = load((data['vol'], data['seg']), batch_size)
-        if validation_split is not None and validation_split is not 0:
+        if validation_split != None and validation_split > 0.:
             return validation_split_fn(dataset, validation_split)
         else:
             return dataset, None
