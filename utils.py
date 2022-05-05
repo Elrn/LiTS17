@@ -51,14 +51,6 @@ safe_divide = lambda a, b : np.divide(a, b, out=np.zeros_like(a), where=b!=0)
 to_list = lambda x: [x] if type(x) is not list else x
 get_datetime = lambda :datetime.datetime.now().strftime('%Y-%m-%d_%Hh%Mm')
 ########################################################################################################################
-def join_dir(dirs:list):
-    if len(dirs) == 0:
-        return dirs
-    base = dirs[0]
-    for dir in dirs[1:]:
-        base = os.path.join(base, dir)
-    return base
-#
 def mkdir(path):
     try: # if hasattr(path, '__len__') and type(path) != str:
         os.makedirs(path)

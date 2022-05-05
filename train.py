@@ -5,6 +5,7 @@ import utils, models, metrics, callbacks, losses
 from Data import LiST17, LiST17_2D
 from tensorflow.keras.callbacks import *
 import os, re, logging
+from os.path import join
 from absl import app
 
 # import tensorflow.experimental.numpy as tnp
@@ -15,15 +16,15 @@ def main(argv):
         utils.tf_init()
     # init
     base_dir = os.path.dirname(os.path.realpath(__file__)) # getcwd()
-    log_dir = utils.join_dir([base_dir, 'log'])
+    log_dir = join(base_dir, 'log')
     dirs = ['plt', 'checkpoint']
-    paths = [utils.join_dir([log_dir, dir]) for dir in dirs]
+    paths = [join(log_dir, dir) for dir in dirs]
     [utils.mkdir(path) for path in paths]
     plt_dir, ckpt_dir = paths
 
     ### ckpt
     ckpt_file_name = 'EP_{epoch}, L_{loss:.3f}, P_{Precision:.3f}, R_{Recall:.3f}, J_{JSC:.3f}, vP_{val_Precision:.3f}, vR_{val_Recall:.3f}, vJ_{val_JSC:.3f}.hdf5'
-    ckpt_file_path = utils.join_dir([ckpt_dir, ckpt_file_name])
+    ckpt_file_path = join(ckpt_dir, ckpt_file_name)
 
     ### Get Data
     dataset, val_dataset = LiST17_2D.build(batch_size=10, validation_split=0.2) # [0]:train [1]:valid or None
