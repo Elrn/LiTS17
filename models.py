@@ -39,7 +39,7 @@ def AE(n_class, base_filters=64, depth=3):
 
 ########################################################################################################################
 
-def AGLN(n_class, base_filters=32, depth=3, compression_rate=0.6):
+def AGLN(n_class, base_filters=64, depth=3, compression_rate=0.6):
     """
     Attention Guided Global Enhancement and Local Refinement Network for Semantic Segmentation
     :return:

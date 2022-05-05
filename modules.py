@@ -72,8 +72,6 @@ def context_fusion_block(filters, kernel=3, **kwargs):
             M = flat()(conv(B.shape[1], 1, padding='same')(D))
             M = tf.matmul(M, B) # B, I, C
 
-            print(D.shape, M.shape)
-
             axis = [-1] + list(D.shape[1:])
             M = tf.reshape(M, axis) # B, H, W, C
 
