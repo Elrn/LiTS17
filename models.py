@@ -1,6 +1,8 @@
+import modules.__init__
 import tensorflow as tf
 from tensorflow.keras.layers import *
-import layers, modules
+import layers
+from modules import *
 
 ########################################################################################################################
 
@@ -17,21 +19,21 @@ def SR(n_class, base_filters=64, depth=2):
     return main
 
 ########################################################################################################################
-def AE(n_class, base_filters=64, depth=3):
+def base(n_class, base_filters=64, depth=3):
     def main(inputs):
         filters = [base_filters*i for i in range(1, depth+2)]
         x = inputs
         skip_conn_list = []
         ### Encoder
         for i in range(depth):
-            x, skip = modules.encoder(filters[i])(x)
-            skip = modules.skip_connection(filters[i])(skip)
+            x, skip = encoder.multi_scale(filters[i])(x)
+            skip = skip_connection.base(filters[i])(skip)
             skip_conn_list.append(skip)
         ### BottleNeck
-        x = modules.bottle_neck(filters[-1])(x)
+        x = latent.base(filters[-1])(x)
         ### Decoder
         for i in reversed(range(depth)):
-            x = modules.decoder(filters[i])(x, skip_conn_list[i])
+            x = decoder.base(filters[i])(x, skip_conn_list[i])
         x = modules.conv(n_class, 1)(x)
         output = Softmax(-1)(x)
         return output
@@ -49,14 +51,14 @@ def AGLN(n_class, base_filters=64, depth=3, compression_rate=0.6):
         skips = []
         ### Encoder
         for i in range(depth):
-            x, skip = modules.encoder(filters[i])(x)
-            skips.append(modules.skip_connection(filters[i])(skip))
+            x, skip = encoder.base(filters[i])(x)
+            skips.append(skip_connection(filters[i])(skip))
         ### BottleNeck
-        x = modules.bottle_neck(filters[-1])(x)
-        D, Bs = modules.sematic_aggregation_block(filters, compression_rate)(x)
+        x = skip_connection.base(filters[-1])(x)
+        D, Bs = latent.sematic_aggregation_block(filters, compression_rate)(x)
         ### Decoder
         for i in reversed(range(depth)):
-            D = modules.context_fusion_block(filters[i], i=i)(skips[i], D, Bs[i])
+            D = decoder.context_fusion_block(filters[i], i=i)(skips[i], D, Bs[i])
         x = modules.conv(n_class, 1)(D)
         output = Softmax(-1)(x)
         return output

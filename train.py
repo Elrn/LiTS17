@@ -11,7 +11,7 @@ from absl import app
 # import tensorflow.experimental.numpy as tnp
 # tnp.experimental_enable_numpy_behavior()
 ########################################################################################################################
-def main(argv):
+def main(*argv):
     if argv[0] == __file__:
         utils.tf_init()
     # init
@@ -33,8 +33,8 @@ def main(argv):
 
     ### Build model
     input = tf.keras.layers.Input(shape=input_shape)
-    # output = models.AE(num_class)(input)
-    output = models.AGLN(num_class)(input)
+    output = models.base(num_class)(input)
+    # output = models.AGLN(num_class)(input)
     model = tf.keras.Model(input, output, name=None)
 
     ### Compile model
@@ -73,7 +73,7 @@ def main(argv):
             ModelCheckpoint(ckpt_file_path, monitor='loss', save_best_only=True, save_weights_only=False, save_freq='epoch'),
             # EarlyStopping(monitor='loss', min_delta=0, patience=5),
             # ReduceLROnPlateau(monitor='val_loss', factor=0.1, patience=2, verbose=0, min_delta=0.0001, cooldown=0, min_lr=0),
-            callbacks.setLR(0.0001),
+            # callbacks.setLR(0.0001),
             callbacks.monitor(plt_dir, dataset=test_dataset)
         ]
     )
