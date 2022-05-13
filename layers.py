@@ -1,8 +1,9 @@
 import tensorflow as tf
 from tensorflow.keras.layers import *
-from tensorflow.python.keras.layers import pooling
+import tensorflow.python.keras.layers.pooling
 from tensorflow.keras.constraints import *
 from tensorflow.keras.initializers import *
+from keras.layers.convolutional import DepthwiseConv
 
 import operator
 from tensorflow.python.keras.utils import conv_utils
@@ -15,6 +16,9 @@ from tensorflow.python.keras import regularizers
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.keras.layers.pooling import Pooling2D
+
+from keras.utils import tf_utils
 
 import functools
 import numpy as np
@@ -23,7 +27,7 @@ import numpy as np
 EPSILON = tf.keras.backend.epsilon()
 
 ########################################################################################################################
-class LAP_2D(pooling.Pooling2D):
+class LAP_2D(Pooling2D):
     """
     LAP: An Attention-Based Module for Faithful Interpretation and Knowledge Injection in Convolutional Neural Networks
         https://arxiv.org/abs/2201.11808
@@ -49,7 +53,7 @@ class LAP_2D(pooling.Pooling2D):
         return tf.reduce_mean(logit, -1)
 
 ########################################################################################################################
-class AdaPool(pooling.Pooling2D):
+class AdaPool(Pooling2D):
     """
     AdaPool: Exponential Adaptive Pooling for Information-Retaining Downsampling
         https://arxiv.org/abs/2111.00772
@@ -150,6 +154,89 @@ class sep_bias(Layer):
         return config
 
 ########################################################################################################################
+class DepthwiseConv3D(DepthwiseConv):
+    def __init__(self,
+                 kernel_size,
+                 strides=(1, 1, 1),
+                 padding='same',
+                 depth_multiplier=1,
+                 data_format=None,
+                 dilation_rate=(1, 1, 1),
+                 activation=None,
+                 use_bias=True,
+                 depthwise_initializer='glorot_uniform',
+                 bias_initializer='zeros',
+                 depthwise_regularizer=None,
+                 bias_regularizer=None,
+                 activity_regularizer=None,
+                 depthwise_constraint=None,
+                 bias_constraint=None,
+                 **kwargs):
+        super(DepthwiseConv3D, self).__init__(
+            3,
+            kernel_size=kernel_size,
+            strides=strides,
+            padding=padding,
+            depth_multiplier=depth_multiplier,
+            data_format=data_format,
+            dilation_rate=dilation_rate,
+            activation=activation,
+            use_bias=use_bias,
+            depthwise_initializer=depthwise_initializer,
+            bias_initializer=bias_initializer,
+            depthwise_regularizer=depthwise_regularizer,
+            bias_regularizer=bias_regularizer,
+            activity_regularizer=activity_regularizer,
+            depthwise_constraint=depthwise_constraint,
+            bias_constraint=bias_constraint,
+            **kwargs)
+
+    def call(self, inputs):
+        outputs = backend.conv3d(
+            inputs,
+            self.depthwise_kernel,
+            strides=self.strides,
+            padding=self.padding,
+            dilation_rate=self.dilation_rate,
+            data_format=self.data_format)
+
+        if self.use_bias:
+            outputs = backend.bias_add(
+                outputs,
+                self.bias,
+                data_format=self.data_format)
+
+        if self.activation is not None:
+            return self.activation(outputs)
+
+        return outputs
+
+    @tf_utils.shape_type_conversion
+    def compute_output_shape(self, input_shape):
+        if self.data_format == 'channels_first':
+            rows = input_shape[2]
+            cols = input_shape[3]
+            out_filters = input_shape[1] * self.depth_multiplier
+        elif self.data_format == 'channels_last':
+            rows = input_shape[1]
+            cols = input_shape[2]
+            out_filters = input_shape[3] * self.depth_multiplier
+
+        rows = conv_utils.conv_output_length(rows, self.kernel_size[0],
+                                             self.padding,
+                                             self.strides[0],
+                                             self.dilation_rate[0])
+        cols = conv_utils.conv_output_length(cols, self.kernel_size[1],
+                                             self.padding,
+                                             self.strides[1],
+                                             self.dilation_rate[1])
+        if self.data_format == 'channels_first':
+            return (input_shape[0], out_filters, rows, cols)
+        elif self.data_format == 'channels_last':
+            return (input_shape[0], rows, cols, out_filters)
+
+
+########################################################################################################################
 class flat(Layer):
     """
     flat inputs except channel dimension.
@@ -166,7 +253,7 @@ class flat(Layer):
         self.input_spec = InputSpec(min_ndim=1)
         self._channels_first = self.data_format == 'channels_first'
 
-    def call(self, inputs):
+    def call(self, inputs, **kwargs):
         if self._channels_first:
             rank = inputs.shape.rank
             if rank and rank > 1:
@@ -420,16 +507,22 @@ class global_attention(Layer):
 #         return config
 
 ########################################################################################################################
+
+
 class channel_attention_base(Layer):
     def __init__(self, squeeze_rate=0.6):
         super(channel_attention_base, self).__init__()
         self.squeeze_rate = squeeze_rate
+        self.BN1 = BatchNormalization()
+        self.BN2 = BatchNormalization()
 
     def build(self, input_shape):
-        self.n_channel = input_shape[self._get_channel_axis()]
+        self.n_channel = input_shape[-1]
         rank = len(input_shape)
         self.GAP = GlobalAveragePooling2D(keepdims=True) if rank == 4 \
             else GlobalAveragePooling3D(keepdims=True)
+        self.squeezed_dense = Dense(self.squeeze_rate * self.n_channel)
+        self.released_dense = Dense(self.n_channel)
 
 class SE(channel_attention_base):
     """
@@ -442,13 +535,12 @@ class SE(channel_attention_base):
 
     def call(self, inputs, training=None, **kargs):
         x = self.GAP(inputs)
-
-        x = Dense(int(self.n_channel * self.squeeze_rate))(x)
-        x = BatchNormalization()(x)
+        x = self.squeezed_dense(x)
+        x = self.BN1(x)
         x = tf.nn.relu(x)
 
-        x = Dense(self.n_channel)(x)
-        x = BatchNormalization()(x)
+        x = self.released_dense(x)
+        x = self.BN2(x)
         x = tf.math.sigmoid(x)
         return inputs * x
 
@@ -464,22 +556,41 @@ class SB(channel_attention_base):
     def call(self, inputs, training=None, **kargs):
         x = self.GAP(inputs)
 
-        x = Dense(int(self.n_channel * self.squeeze_rate))(x)
-        x = BatchNormalization()(x)
+        x = self.squeezed_dense(x)
+        x = self.BN1(x)
         x = tf.nn.relu(x)
 
-        x = Dense(self.n_channel)(x)
-        x = BatchNormalization()(x)
+        x = self.released_dense(x)
+        x = self.BN2(x)
         x = tf.math.tanh(x)
         return inputs + x
+
 
 ########################################################################################################################
 ########################################################################################################################
 # class Conv(Layer):
 #     def __init__(self,
-#                  rank,filters,kernel_size,strides=1,padding='valid',data_format=None,dilation_rate=1,groups=1, activation=None,use_bias=True,kernel_initializer='glorot_uniform', bias_initializer='zeros',
-#                  kernel_regularizer=None,bias_regularizer=None,activity_regularizer=None,kernel_constraint=None,
-#                  bias_constraint=None,trainable=True,name=None,conv_op=None,**kwargs):
+#                  rank,
+#                  filters,
+#                  kernel_size,
+#                  strides=1,
+#                  padding='valid',
+#                  data_format=None,
+#                  dilation_rate=1,
+#                  groups=1,
+#                  activation=None,
+#                  use_bias=True,
+#                  kernel_initializer='glorot_uniform',
+#                  bias_initializer='zeros',
+#                  kernel_regularizer=None,
+#                  bias_regularizer=None,
+#                  activity_regularizer=None,
+#                  kernel_constraint=None,
+#                  bias_constraint=None,
+#                  trainable=True,
+#                  name=None,
+#                  conv_op=None,
+#                  **kwargs):
 #         super(Conv, self).__init__(trainable=trainable, name=name,
 #                                    activity_regularizer=regularizers.get(activity_regularizer), **kwargs)
 #         self.rank = rank
