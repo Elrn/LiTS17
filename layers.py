@@ -25,6 +25,248 @@ import numpy as np
 
 ########################################################################################################################
 EPSILON = tf.keras.backend.epsilon()
+NEW = tf.newaxis
+########################################################################################################################
+
+
+########################################################################################################################
+class DeformableConvLayer(Conv2D):
+    def __init__(self,
+                 filters,
+                 kernel_size,
+                 strides=(1, 1),
+                 padding='valid',
+                 data_format=None,
+                 dilation_rate=(1, 1),
+                 deformable_groups=None,
+                 activation=None,
+                 use_bias=True,
+                 kernel_initializer='glorot_uniform',
+                 bias_initializer='zeros',
+                 kernel_regularizer=None,
+                 bias_regularizer=None,
+                 activity_regularizer=None,
+                 kernel_constraint=None,
+                 bias_constraint=None,
+                 **kwargs):
+        super().__init__(
+            filters=filters,
+            kernel_size=kernel_size,
+            strides=strides,
+            padding=padding,
+            data_format=data_format,
+            dilation_rate=dilation_rate,
+            activation=activation,
+            use_bias=use_bias,
+            kernel_initializer=kernel_initializer,
+            bias_initializer=bias_initializer,
+            kernel_regularizer=kernel_regularizer,
+            bias_regularizer=bias_regularizer,
+            activity_regularizer=activity_regularizer,
+            kernel_constraint=kernel_constraint,
+            bias_constraint=bias_constraint,
+            **kwargs)
+        if deformable_groups is None:
+            deformable_groups = filters
+        if filters % deformable_groups != 0:
+            raise ValueError('"filters" mod "num_deformable_group" must be zero')
+        self.deformable_groups = deformable_groups
+
+    def build(self, input_shape):
+        n_ch = self._get_input_channel(input_shape)
+        # kernel_shape = self.kernel_size + (n_ch, self.filters)
+        # we want to use depth-wise conv
+        # kernel_shape = self.kernel_size + (n_ch // self.groups, self.filters)
+        # depthwise_kernel_shape = self.kernel_size + (n_ch, self.depth_multiplier)
+        kernel_shape = self.kernel_size + (n_ch * self.filters, 1)
+        self.kernel = self.add_weight(
+            name='kernel',
+            shape=kernel_shape,
+            initializer=self.kernel_initializer,
+            regularizer=self.kernel_regularizer,
+            constraint=self.kernel_constraint,
+            trainable=True,
+            dtype=self.dtype)
+        if self.use_bias:
+            self.bias = self.add_weight(
+                name='bias',
+                shape=(self.filters,),
+                initializer=self.bias_initializer,
+                regularizer=self.bias_regularizer,
+                constraint=self.bias_constraint,
+                trainable=True,
+                dtype=self.dtype)
+
+        # create offset conv layer
+        offset_num = self.kernel_size[0] * self.kernel_size[1] * self.deformable_groups
+        self.offset_layer_kernel = self.add_weight(
+            name='offset_layer_kernel',
+            shape=self.kernel_size + (n_ch, offset_num * 2),  # 2 means x and y axis
+            initializer=tf.zeros_initializer(),
+            regularizer=self.kernel_regularizer,
+            trainable=True,
+            dtype=self.dtype)
+        self.offset_layer_bias = self.add_weight(
+            name='offset_layer_bias',
+            shape=(offset_num * 2,),
+            initializer=tf.zeros_initializer(),
+            # initializer=tf.random_uniform_initializer(-5, 5),
+            regularizer=self.bias_regularizer,
+            trainable=True,
+            dtype=self.dtype)
+        self.built = True
+
+    def get_data_shape(self, inputs):
+        input_shape = tensor_shape.TensorShape(inputs.shape).as_list()
+        batch_rank = len(input_shape) - self.rank - 1
+        if self.data_format == 'channels_first':
+            return input_shape[batch_rank+1:]
+        else:
+            return input_shape[batch_rank:-1]
+
+    def call(self, inputs, training=None, **kwargs):
+        # [bsz, out_h, out_w, kernel_h, * kernel_w * channel_out * 2]
+        data_format = 'NHWC' if self.data_format == 'channels_last' else 'NCHW'
+        offset = tf.nn.conv2d(
+            inputs,
+            filters=self.offset_layer_kernel,
+            strides=[1, *self.strides, 1],
+            padding=self.padding.upper(),
+            data_format=data_format,
+            dilations=[1, *self.dilation_rate, 1]
+        )
+        offset += self.offset_layer_bias
+
+        inputs = self._pad_input(inputs) if self.padding == 'SAME' else inputs
+
+        # some length
+        bsz = inputs.shape[0]
+        n_ch = inputs.shape[self._get_channel_axis()]
+        in_h, in_w = self.get_data_shape(inputs)
+        out_h, out_w = self.get_data_shape(offset)  # output feature map size
+        kernel_h, kernel_w = self.kernel_size
+
+        # split offset inot x, y axis
+        x_off, y_off = tf.split(offset, 2, axis=self._get_channel_axis())
+
+        # [1, out_h, out_w, filter_h * filter_w]
+        x_idx, y_idx = self._get_conv_indices(inputs) # padding을 꼭 VALID로 해야 하나?
+        # kernel shape 에 맞추기 위함
+        x_idx, y_idx = tf.tile([x_idx, y_idx], [1, bsz, 1, 1, self.deformable_groups])
+        x_idx, y_idx = tf.cast([x_idx, y_idx], self.dtype)
+
+        # add offset
+        # [out_x, out_y, k^2 * dgroups] + [out_h, out_w, k^2 * dgroups]
+        # idx의 padding은 valid인데, off의 padding은 same일 수 있는데 어떻게 맞춰야 하나?
+        x_idx, y_idx = x_idx + x_off, y_idx + y_off
+        # idx 값이기 때문에 -1
+        x_idx = tf.clip_by_value(x_idx, 0, in_w - 1)
+        y_idx = tf.clip_by_value(y_idx, 0, in_h - 1)
+
+        # get four coordinates of points around (x, y)
+        y0, x0 = tf.cast([x_idx, y_idx], tf.int32)
+        y1, x1 = y0 + 1, x0 + 1
+        y0, y1 = [tf.clip_by_value(i, 0, in_h - 1) for i in [y0, y1]]
+        x0, x1 = [tf.clip_by_value(i, 0, in_w - 1) for i in [x0, x1]]
+
+        # [out_h, out_w, k^2, n_ch]
+        indices = [[y0, x0], [y0, x1], [y1, x0], [y1, x1]]
+        p0, p1, p2, p3 = [self._get_pixel_values_at_point(inputs, i) for i in indices]
+        x0, x1, y0, y1 = tf.cast([x0, x1, y0, y1], self.dtype)
+
+        # weights
+        w0 = (y1 - y_idx) * (x1 - x_idx)
+        w1 = (y1 - y_idx) * (x_idx - x0)
+        w2 = (y_idx - y0) * (x1 - x_idx)
+        w3 = (y_idx - y0) * (x_idx - x0)
+
+        w0, w1, w2, w3 = tf.expand_dims([w0, w1, w2, w3], -1)
+        pixels = tf.add_n([w0 * p0, w1 * p1, w2 * p2, w3 * p3])
+
+        # shaping
+        shape = [-1, out_h, out_w, *self.kernel_size, self.deformable_groups, n_ch]
+        pixels = tf.reshape(pixels, shape)
+
+        pixels = tf.transpose(pixels, [0, 1, 3, 2, 4, 5, 6])
+
+        shape = [-1, out_h * kernel_h, out_w * kernel_w, self.deformable_groups, n_ch]
+        pixels = tf.reshape(pixels, shape)
+
+        # copy channels to same group
+        # [bsz, out_h, out_w, *kernel_size, deformable_groups, n_ch * feat_in_group]
+        feat_in_group = self.filters // self.deformable_groups
+        pixels = tf.tile(pixels, [1, 1, 1, 1, feat_in_group])
+        shape = [-1, out_h * kernel_h, out_w * kernel_w, self.filters * n_ch]
+        pixels = tf.reshape(pixels, shape)
+
+        # kernel_shape = [k, k, n_ch * self.filters, 1)]
+        outputs = tf.nn.depthwise_conv2d(pixels, self.kernel, [1, *self.kernel_size, 1], 'VALID')
+        # add the output feature maps in the same group
+        outputs = tf.reshape(outputs, [-1, out_h, out_w, self.filters, n_ch])
+        outputs = tf.reduce_sum(outputs, axis=-1)
+        if self.use_bias:
+            outputs += self.bias
+        return self.activation(outputs)
+
+    def _pad_input(self, inputs):
+        """Check if input feature map needs padding, because we don't use the standard Conv() function.
+        :param inputs:
+        :return: padded input feature map
+        """
+        data_shape = self.get_data_shape(inputs)
+        padding_list = []
+        for i in range(2):
+            filter_size = self.kernel_size[i]
+            dilation = self.dilation_rate[i]
+            dilated_filter_size = filter_size + (filter_size - 1) * (dilation - 1)
+            same_output = (data_shape[i] + self.strides[i] - 1) // self.strides[i]
+            valid_output = (data_shape[i] - dilated_filter_size + self.strides[i]) // self.strides[i]
+            if same_output == valid_output:
+                padding_list += [0, 0]
+            else:
+                p = dilated_filter_size - 1
+                p_0 = p // 2
+                padding_list += [p_0, p - p_0]
+        if sum(padding_list) != 0:
+            padding = [[0, 0],
+                       [padding_list[0], padding_list[1]],  # top, bottom padding
+                       [padding_list[2], padding_list[3]],  # left, right padding
+                       [0, 0]]
+            inputs = tf.pad(inputs, padding)
+        return inputs
+
+    def _get_conv_indices(self, inputs):
+        """
+        the x, y coordinates in the window when a filter sliding on the feature map
+        :param feature_map_size:
+        :return: y, x with shape [1, out_h, out_w, filter_h * filter_w]
+        """
+        feat_h, feat_w = self.get_data_shape(inputs)
+        x, y = tf.meshgrid(tf.range(feat_w), tf.range(feat_h))
+        x, y = x[NEW, :, :, NEW], y[NEW, :, :, NEW]
+        x, y = [tf.image.extract_patches(
+            i,
+            [1, *self.kernel_size, 1],
+            [1, *self.strides, 1],
+            [1, *self.dilation_rate, 1],
+            'VALID' # padding을 꼭 VALID로 해야 하나?
+        ) for i in [x, y]]  # shape [1, out_h, out_w, filter_h * filter_w]
+        return x, y
+
+    @staticmethod
+    def _get_pixel_values_at_point(inputs, indices):
+        """get pixel values
+        :param inputs:
+        :param indices: shape [batch_size, H, W, I], I = filter_h * filter_w * channel_out
+        :return:
+        """
+        y, x = indices
+        batch, h, w, n = y.shape #[:4]
+
+        batch_idx = tf.reshape(tf.range(batch), (batch, 1, 1, 1))
+        b = tf.tile(batch_idx, (1, h, w, n))
+        pixel_idx = tf.stack([b, y, x], axis=-1)
+        return tf.gather_nd(inputs, pixel_idx)
 
 ########################################################################################################################
 class LAP_2D(Pooling2D):
@@ -555,7 +797,6 @@ class SB(channel_attention_base):
 
     def call(self, inputs, training=None, **kargs):
         x = self.GAP(inputs)
-
         x = self.squeezed_dense(x)
         x = self.BN1(x)
         x = tf.nn.relu(x)

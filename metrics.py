@@ -31,8 +31,9 @@ class _BASE(tf.keras.metrics.Metric):
     def process_confusion_matrix(self):
         self.TN = self.CM[0][0]
         self.TP = tf.reduce_sum(tf.linalg.diag_part(self.CM)[1:])
-        self.FP = tf.reduce_sum(self.CM[0][1:])
-        self.FN = tf.reduce_sum(tf.linalg.set_diag(self.CM, np.zeros([self.num_classes]))[1:])
+        self.FP = tf.reduce_sum(tf.linalg.set_diag(self.CM, np.zeros([self.num_classes]))[:, 1:])
+        self.FN = tf.reduce_sum(tf.linalg.set_diag(self.CM, np.zeros([self.num_classes]))[1:, :1])
+        assert tf.reduce_sum(self.CM) == self.TN + self.TP + self.FP + self.FN
 
     def update_state(self, y_true, y_pred, sample_weight=None):
         y_true = tf.cast(y_true, self._dtype) # None 일 경우 float 할당
@@ -63,9 +64,10 @@ class _BASE(tf.keras.metrics.Metric):
             self.CM, np.zeros((self.num_classes, self.num_classes)))
 
     def get_config(self):
-        config = {'num_classes': self.num_classes}
-        base_config = super(_BASE, self).get_config()
-        return dict(list(base_config.items()) + list(config.items()))
+        config = super(_BASE, self).get_config()
+        # config.update({'num_classes': self.num_classes})
+
+        return config
 
 ########################################################################################################################
 class TP_leison(_BASE):
@@ -207,9 +209,11 @@ class surface_distance(tf.keras.metrics.Metric):
         return np.concatenate([distance[contour] for distance, contour in tmp])
 
     def get_config(self):
-        config = {'num_classes': self.num_classes}
-        base_config = super(surface_distance, self).get_config()
-        return dict(list(base_config.items()) + list(config.items()))
+        config = super(surface_distance, self).get_config()
+        config.update({
+            'num_classes': self.num_classes,
+        })
+        return config
 
 ########################################################################################################################
 class ASSD(surface_distance):

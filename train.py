@@ -1,35 +1,28 @@
 #-*- coding: utf-8 -*-
 
 import tensorflow as tf
-import utils, models, metrics, callbacks, losses
-from Data import LiST17, LiST17_2D
-from tensorflow.keras.callbacks import *
-import os, re, logging
+import utils, models, metrics, losses, callbacks
+from tensorflow.python.keras.callbacks import *
+
+import re
 from os.path import join
 from absl import app
+import flags
+FLAGS = flags.FLAGS
 
-# import tensorflow.experimental.numpy as tnp
-# tnp.experimental_enable_numpy_behavior()
 ########################################################################################################################
-def main(*argv):
+def main(*argv, **kwargs):
     if argv[0] == __file__:
         utils.tf_init()
-    # init
-    base_dir = os.path.dirname(os.path.realpath(__file__)) # getcwd()
-    log_dir = join(base_dir, 'log')
-    dirs = ['plt', 'checkpoint']
-    paths = [join(log_dir, dir) for dir in dirs]
-    [utils.mkdir(path) for path in paths]
-    plt_dir, ckpt_dir = paths
 
     ### ckpt
-    ckpt_file_name = 'EP_{epoch}, L_{loss:.3f}, P_{Precision:.3f}, R_{Recall:.3f}, J_{JSC:.3f}, vP_{val_Precision:.3f}, vR_{val_Recall:.3f}, vJ_{val_JSC:.3f}.hdf5'
-    ckpt_file_path = join(ckpt_dir, ckpt_file_name)
+    ckpt_file_path = join(FLAGS.ckpt_dir, FLAGS.ckpt_file_name)
 
     ### Get Data
-    dataset, val_dataset = LiST17_2D.build(batch_size=10, validation_split=0.2) # [0]:train [1]:valid or None
-    test_dataset = LiST17_2D.build_test(10)
-    num_class, input_shape = LiST17_2D.num_class, LiST17_2D.input_shape
+    _dataset = kwargs['_dataset']
+    dataset, val_dataset = _dataset.build(batch_size=10, validation_split=0.2)  # [0]:train [1]:valid or None
+    test_dataset = _dataset.build_test(10)
+    num_class, input_shape = _dataset.num_class, _dataset.input_shape
 
     ### Build model
     input = tf.keras.layers.Input(shape=input_shape)
@@ -63,21 +56,29 @@ def main(*argv):
         print(f'[Model|ckpt] Model is trained from scratch.')
         initial_epoch = 0
 
+    _callbacks=[
+        ModelCheckpoint(ckpt_file_path, monitor='loss', save_best_only=True, save_weights_only=False, save_freq='epoch'),
+        # EarlyStopping(monitor='loss', min_delta=0, patience=5),
+        # ReduceLROnPlateau(monitor='val_loss', factor=0.1, patience=2, verbose=0, min_delta=0.0001, cooldown=0, min_lr=0),
+        # callbacks.setLR(0.0001),
+    ]
+    if FLAGS.plot: # validation dataset 을 생성해야 한다.
+        _callbacks.append(callbacks.monitor(FLAGS.plot_dir, dataset=test_dataset.take(1)))
+
+    fit_args = {
+        'x': dataset,
+        'epochs': FLAGS.epoch,
+        'initial_epoch': initial_epoch,
+        'callbacks': _callbacks
+    }
+    if FLAGS.valid_split != None or FLAGS.valid_split != 0:
+        fit_args['validation_data'] = val_dataset,
+
     ### Train model
-    history = model.fit(
-        x = dataset,
-        epochs=30,
-        validation_data=val_dataset,
-        initial_epoch=initial_epoch,
-        callbacks=[
-            ModelCheckpoint(ckpt_file_path, monitor='loss', save_best_only=True, save_weights_only=False, save_freq='epoch'),
-            # EarlyStopping(monitor='loss', min_delta=0, patience=5),
-            # ReduceLROnPlateau(monitor='val_loss', factor=0.1, patience=2, verbose=0, min_delta=0.0001, cooldown=0, min_lr=0),
-            # callbacks.setLR(0.0001),
-            callbacks.monitor(plt_dir, dataset=test_dataset)
-        ]
-    )
-    # date = datetime.datetime.today().strftime('%Y-%m-%d_%Hh%Mm%Ss')
+    history = model.fit(**fit_args)
+    if FLAGS.save == True:
+        save_path = join(FLAGS.ckpt_dir, FLAGS.saved_model_name)
+        model.save(save_path)
     # utils.save_history(history, utils.join_dir([base_dir, 'log', date]))
 
 if __name__ == '__main__':

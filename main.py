@@ -1,30 +1,58 @@
+import numpy as np
 import tensorflow as tf
 import os, logging, re
-from os.path import join
 from absl import app
-import flags, utils, train, callbacks
+import nibabel as nib
+from Dataset import *
+from os.path import join
+import modules
+import flags, utils, train
 FLAGS = flags.FLAGS
 
 ########################################################################################################################
-def main(argv):
+""" 전역변수 설정 """
+########################################################################################################################
+dataset = LiST17_2D
+modules.rank = dataset.rank
+modules.assignment_function_according_to_data_rank()
+
+########################################################################################################################
+def main(*argv, **kwargs):
+    """ init """
     utils.tf_init()
+    paths = [FLAGS.ckpt_dir, FLAGS.plot_dir]
+    [utils.mkdir(path) for path in paths]
 
     if FLAGS.train:
-        train.main(argv)
-    else: # inference
-        base_dir = os.path.dirname(os.path.realpath(__file__))  # getcwd()
-        ckpt_dir = join(base_dir, 'log', 'checkpoint') if FLAGS.ckpt_dir==None else FLAGS.ckpt_dir
-        ckpt = callbacks.load_weights._get_most_recently_modified_file_matching_pattern(ckpt_dir)
-        if ckpt != None and callbacks.load_weights.checkpoint_exists(ckpt):
-            model = tf.keras.models.load_weights(ckpt, custom_objects=None, compile=True, options=None)
-        else:
-            raise RuntimeError(f'Model Checkpoint is not fount, accepted "{ckpt}".')
-        if FLAGS.predict_step:
-            model.predict_step()
-        else:
-            model.predict()
+        train.main(argv, _dataset=dataset)
 
+    else: # inference
+        saved_model_path = join(FLAGS.ckpt_dir, FLAGS.saved_model_name)
+        model = tf.saved_model.load(saved_model_path)
+
+        from glob import glob
+        # FLAGS.inputs = glob('C:\dataset\stroke\ADC2dwi\*')
+        # FLAGS.inputs = glob('C:\dataset\stroke\dwi_RPI_BFC\*')
+        FLAGS.inputs = glob('C:\dataset\\01_KUMC_data\\*\*\\*dwi_RPI_BFC*')
+
+        ds, depths, headers, affines, img_shapes = dataset.build_for_pred(FLAGS.inputs)
+        ds = ds.as_numpy_iterator() # load
+        # OOM 을 피하기 위해 split 하여 입력
+        outputs = []
+        for arr in ds:
+            output = model(arr)
+            outputs.append(output)
+        outputs = np.concatenate(outputs, 0)
+        """ output post-processing """
+        dataset.post_processing(outputs, depths, headers, affines, img_shapes)
+
+########################################################################################################################
 if __name__ == '__main__':
     app.run(main)
+
+########################################################################################################################
+
+
+
 
 

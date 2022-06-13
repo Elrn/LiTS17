@@ -13,7 +13,6 @@ def base(filters, kernel=3, pool=2):
     def main(inputs):
         x = modules.conv(filters, kernel, padding='same')(inputs)
         x = modules.BN_ACT(x)
-        x = conv_bn_act(x)
         skip = conv_bn_act(x)
         x = modules.pooling(pool, pool)(skip)
         return x, skip

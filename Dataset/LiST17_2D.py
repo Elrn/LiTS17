@@ -19,9 +19,6 @@ volume: ?, 512, 512
 segmentation: ?, 512, 512import tensorflow as tf
 from os.path import basename
 
-import numpy as np
-import cv2
-import utils
 """
 
 import tensorflow as tf
@@ -30,7 +27,14 @@ from os.path import basename
 import numpy as np
 
 num_class = 3
-input_shape = [160, 160, 1] # Z: 200
+img_size = [160, 160]
+input_shape = [*img_size, 1] # Z: 200
+seg_shape = [*img_size, 3]
+rank = 2
+
+"""
+
+"""
 ########################################################################################################################
 def parse_fn(vol, seg): # RANK: (4, 3)
     vol = tf.transpose(vol, [2, 0, 1, 3])

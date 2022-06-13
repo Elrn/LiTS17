@@ -3,8 +3,6 @@ import tensorflow as tf
 from tensorflow.keras.layers import *
 import modules
 
-
-
 def base(filters, div=4, kernel=3):
     concat_list = []
     div_channel = filters // div
