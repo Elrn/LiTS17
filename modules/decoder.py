@@ -25,6 +25,29 @@ def base(filters, div=4, kernel=3):
 
     return main
 
+def base_2(filters, kernel=3, div=4):
+    concat_list = []
+    div_channel = filters // div
+    SP = layers.sep_bias(div)
+
+    def main(x, skip):
+        print(f'in D, {skip}')
+        x = modules.BN_ACT(x)
+        features = [Dense(div_channel)(SP(x, i)) for i in range(div)]
+        for feature in features:
+            x = modules.convTranspose(div_channel, kernel, strides=2,
+                                     padding='same')(feature)
+            for j in range(1, 4):
+                x += modules.conv(div_channel, kernel, dilation_rate=j,
+                                 padding='same', groups=div_channel)(x)
+            concat_list.append(x)
+        x = tf.concat(concat_list, -1)
+        skip = Dense(x.shape[-1])(layers.sep_bias(1)(skip))
+        x = tf.concat([x, skip], -1)
+        return x
+
+    return main
+
 
 def multi_scale(filters, div=4, kernel=3):
     concat_list = []

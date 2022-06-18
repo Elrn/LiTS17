@@ -1,6 +1,6 @@
 import layers
 import tensorflow as tf
-
+from tensorflow.keras.layers import *
 import modules
 
 def base(filters, kernel=3, pool=2):
@@ -15,6 +15,36 @@ def base(filters, kernel=3, pool=2):
         x = modules.BN_ACT(x)
         skip = conv_bn_act(x)
         x = modules.pooling(pool, pool)(skip)
+        return x, skip
+    return main
+
+def base_2(filters, kernel=3, pool=2):
+    def tranform(x):
+        SP = layers.sep_bias(2)
+        w = Dense(x.shape[-1])(SP(x, 0))
+        w = tf.nn.softmax(w)
+        b = Dense(x.shape[-1])(SP(x, 1))
+        b = tf.math.sigmoid(b)
+        x = w * x + b
+        return x
+
+    SP = layers.sep_bias(2)
+    def main(x):
+        x = BatchNormalization()(x)
+        x = Activation('relu')(x)
+        x = modules.conv(filters, kernel, padding='same')(x)
+        x = tf.concat([SP(x, 0), SP(x, 1)], -1)
+        x = BatchNormalization()(x)
+        x = Activation('gelu')(x)
+        x += tranform(x)
+        x = BatchNormalization()(x)
+        x = Activation('relu')(x)
+        x = modules.depthwise(kernel, padding='same')(x)
+        x = BatchNormalization()(x)
+        x = modules.depthwise(kernel, padding='same')(x)
+        skip = x
+        if pool != None:
+            x = modules.pooling(pool, pool)(x)
         return x, skip
     return main
 

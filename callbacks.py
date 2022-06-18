@@ -22,6 +22,61 @@ class monitor(tf.keras.callbacks.Callback):
         # self.reconstuction_plot(epoch, logs)
         self.slices_plot(epoch, logs)
 
+    def plot(self, epoch, logs=None):
+        """
+        col 1. 원본
+        col 2. label
+        col 3. 원본 + label
+        col 4. 원본 + prediction
+        """
+        epoch += 1
+        ylabels = ['Data', 'Lable', 'Data + Lable', 'Prediction', 'Data + Prediction']
+        cols, rows = len(ylabels), self.num_show
+        figure, axs = plt.subplots(cols, rows, figsize=(rows * 3, cols * 3))
+        figure.suptitle(f'Epoch: "{epoch}"', fontsize=10)
+        figure.tight_layout()
+
+        [axs[i][0].set_ylabel(l, fontsize=14) for i, l in enumerate(ylabels)]
+
+        inputs, preds, labels = [], [], []
+        for data, seg in self.dataset: # take, B, H, W, C
+            inputs.append(data)
+            preds.append(self.model(data))
+            labels.append(seg)
+
+        """
+        병렬 처리를 하지 않을 경우 코드는 더 간결할 수 있다.
+        대신, Batch size 를 1로 설정하고 모델에 각각 입력해야 한다.
+        """
+        inputs = tf.squeeze(inputs)
+        labels = tf.squeeze(tf.argmax(labels, -1))
+        preds = tf.squeeze(tf.argmax(preds, -1))
+        inputs = tf.reshape(inputs, [-1, *inputs.shape[-3:]])
+        labels = tf.reshape(labels, [-1, *labels.shape[-2:]])
+        preds = tf.reshape(preds, [-1, *preds.shape[-2:]])
+
+        for c in range(cols):
+            for r in range(rows):
+                axs[c][r].yaxis.tick_right()
+                # axs[c][r].set_xticks([])
+                # axs[c][r].set_yticks([])
+                if c == 0:
+                    axs[c][r].imshow(inputs[r])
+                elif c == 1:
+                    axs[c][r].imshow(labels[r], cmap='rainbow', alpha=0.5)
+                elif c == 2:
+                    axs[c][r].imshow(inputs[r])
+                    axs[c][r].imshow(labels[r], cmap='rainbow', alpha=0.2)
+                elif c == 3:
+                    axs[c][r].imshow(preds[r], cmap='rainbow', alpha=0.5)
+                else:
+                    axs[c][r].imshow(inputs[r])
+                    axs[c][r].imshow(preds[r], cmap='rainbow', alpha=0.2)
+
+        save_path = os.path.join(self.save_dir, f'{epoch}.png')
+        plt.savefig(save_path, dpi=200)
+        plt.close('all')
+
     def slices_plot(self, epoch, logs=None):
         epoch += 1
         cols, rows = 2, 4

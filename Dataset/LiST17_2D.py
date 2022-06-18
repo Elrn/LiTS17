@@ -31,7 +31,7 @@ img_size = [160, 160]
 input_shape = [*img_size, 1] # Z: 200
 seg_shape = [*img_size, 3]
 rank = 2
-
+target_label = 2 # Metric 인자로 사용
 """
 
 """

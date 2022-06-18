@@ -21,22 +21,24 @@ def main(*argv, **kwargs):
     ### Get Data
     _dataset = kwargs['_dataset']
     dataset, val_dataset = _dataset.build(batch_size=10, validation_split=0.2)  # [0]:train [1]:valid or None
-    test_dataset = _dataset.build_test(10)
+    # test_dataset = _dataset.build_test(10)
     num_class, input_shape = _dataset.num_class, _dataset.input_shape
+    target_label = _dataset.target_label
 
     ### Build model
     input = tf.keras.layers.Input(shape=input_shape)
-    output = models.base(num_class)(input)
+    # output = models.base(num_class)(input)
     # output = models.AGLN(num_class)(input)
+    output = models.tmp(num_class)(input)
     model = tf.keras.Model(input, output, name=None)
 
     ### Compile model
     metric_list = [
-        metrics.Precision(num_class),
-        metrics.Recall(num_class),
-        metrics.F_Score(num_class),
-        metrics.DSC(num_class),
-        metrics.JSC(num_class),
+        metrics.Precision(num_class, target_label),
+        metrics.Recall(num_class, target_label),
+        metrics.F_Score(num_class, target_label),
+        metrics.DSC(num_class, target_label),
+        metrics.JSC(num_class, target_label),
     ]
     model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.001),
                   loss=losses.WCE(),
@@ -71,7 +73,7 @@ def main(*argv, **kwargs):
         'initial_epoch': initial_epoch,
         'callbacks': _callbacks
     }
-    if FLAGS.valid_split != None or FLAGS.valid_split != 0:
+    if FLAGS.valid_split != None and FLAGS.valid_split != 0:
         fit_args['validation_data'] = val_dataset,
 
     ### Train model

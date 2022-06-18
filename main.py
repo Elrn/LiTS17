@@ -6,6 +6,7 @@ import nibabel as nib
 from Dataset import *
 from os.path import join
 import modules
+from glob import glob
 import flags, utils, train
 FLAGS = flags.FLAGS
 
@@ -30,9 +31,6 @@ def main(*argv, **kwargs):
         saved_model_path = join(FLAGS.ckpt_dir, FLAGS.saved_model_name)
         model = tf.saved_model.load(saved_model_path)
 
-        from glob import glob
-        # FLAGS.inputs = glob('C:\dataset\stroke\ADC2dwi\*')
-        # FLAGS.inputs = glob('C:\dataset\stroke\dwi_RPI_BFC\*')
         FLAGS.inputs = glob('C:\dataset\\01_KUMC_data\\*\*\\*dwi_RPI_BFC*')
 
         ds, depths, headers, affines, img_shapes = dataset.build_for_pred(FLAGS.inputs)
