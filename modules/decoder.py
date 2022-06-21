@@ -3,6 +3,7 @@ import tensorflow as tf
 from tensorflow.keras.layers import *
 import modules
 
+########################################################################################################################
 def base(filters, div=4, kernel=3):
     concat_list = []
     div_channel = filters // div
@@ -22,16 +23,15 @@ def base(filters, div=4, kernel=3):
         x = tf.concat(concat_list, -1)
         x = modules.BN_ACT(x)
         return x
-
     return main
 
+########################################################################################################################
 def base_2(filters, kernel=3, div=4):
     concat_list = []
     div_channel = filters // div
     SP = layers.sep_bias(div)
 
     def main(x, skip):
-        print(f'in D, {skip}')
         x = modules.BN_ACT(x)
         features = [Dense(div_channel)(SP(x, i)) for i in range(div)]
         for feature in features:
@@ -45,10 +45,9 @@ def base_2(filters, kernel=3, div=4):
         skip = Dense(x.shape[-1])(layers.sep_bias(1)(skip))
         x = tf.concat([x, skip], -1)
         return x
-
     return main
 
-
+########################################################################################################################
 def multi_scale(filters, div=4, kernel=3):
     concat_list = []
     div_channel = filters // div
@@ -70,6 +69,7 @@ def multi_scale(filters, div=4, kernel=3):
         return x
     return main
 
+########################################################################################################################
 def context_fusion_block(filters, kernel=3, **kwargs):
     """
     Attention Guided Global Enhancement and Local Refinement Network for Semantic Segmentation
@@ -121,3 +121,5 @@ def context_fusion_block(filters, kernel=3, **kwargs):
         return x
 
     return main
+
+########################################################################################################################

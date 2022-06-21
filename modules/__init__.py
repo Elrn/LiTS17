@@ -9,14 +9,12 @@ from tensorflow.keras.layers import *
 import layers
 import tensorflow as tf
 
-rank = None
-
 conv = None
 convTranspose = None
 pooling = None
 depthwise = None
 
-def assignment_function_according_to_data_rank():
+def assignment_function_according_to_data_rank(rank):
     global conv
     global convTranspose
     global pooling
@@ -35,7 +33,14 @@ def assignment_function_according_to_data_rank():
     else:
         raise ValueError(f'D is must 2 or 3, not "{rank}".')
 
-
+def tranform(x):
+    SP = layers.sep_bias(2)
+    w = LayerNormalization(axis=[1, 2])(SP(x, 0))
+    w = tf.nn.softmax(w)
+    b = LayerNormalization(axis=[1, 2])(SP(x, 1))
+    b = tf.math.sigmoid(b)
+    x += w * x + b
+    return x
 
 
 BN_ACT = lambda x : tf.nn.relu(BatchNormalization()(x))
