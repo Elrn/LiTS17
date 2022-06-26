@@ -25,7 +25,7 @@ def base_2(filters, kernel=3, pool=2):
         x = tf.concat([SP(x, 0), SP(x, 1)], -1)
         x = BatchNormalization()(x)
         x = Activation('gelu')(x)
-        x = modules.tranform(x)
+        x = modules.transform(x)
         x = BatchNormalization()(x)
         x_ = Activation('relu')(x)
         x = modules.depthwise(kernel, padding='same')(x_)
