@@ -1,11 +1,17 @@
-# LiTS17
+# LiTS17 [![arXiv](https://img.shields.io/badge/arXiv-1901.04056-b31b1b.svg?style=flat-square)](https://arxiv.org/abs/1901.04056)
+> The Liver Tumor Segmentation Benchmark (LiTS)
 
-![image](https://user-images.githubusercontent.com/19265337/163009837-ba952650-18aa-4306-b8bc-fd26169c8aa0.png)
+# Dataset
+[![Kaggle](https://img.shields.io/badge/Kaggle-035a7d?style=for-the-badge&logo=kaggle&logoColor=white)](https://www.kaggle.com/datasets/andrewmvd/liver-tumor-segmentation)
+
+
+
+# [-] Result
 
 | **Metric** | **Score** |  |
 |---|---|---|
-| Precision | 0.8852| TP / (TP + FP) |
-| Recall | 0.9242| TP / (TP + FN) |
-| DSC | 0.9043 | 2TP / (2TP + FP + FN) |
-| F2_Score | 0.9161| 3TP / (3TP + 2FN + FP) |
-| JSC | 0.8252 | TP / (TP + FP + FN) |
+| Precision | 0.| TP / (TP + FP) |
+| Recall | 0.| TP / (TP + FN) |
+| DSC | 0. | 2TP / (2TP + FP + FN) |
+| F2_Score | 0.| 3TP / (3TP + 2FN + FP) |
+| JSC | 0. | TP / (TP + FP + FN) |
