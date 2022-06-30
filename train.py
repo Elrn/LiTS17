@@ -20,7 +20,7 @@ def main(*argv, **kwargs):
 
     ### Get Data
     _dataset = kwargs['_dataset']
-    dataset, val_dataset = _dataset.build(batch_size=10, validation_split=0.2)  # [0]:train [1]:valid or None
+    dataset, val_dataset = _dataset.build(FLAGS.bsz, FLAGS.valid_split, FLAGS.repeat)
     # test_dataset = _dataset.build_test(10)
     num_class, input_shape = _dataset.num_class, _dataset.input_shape
     target_label = _dataset.target_label

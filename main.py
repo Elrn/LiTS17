@@ -14,8 +14,7 @@ FLAGS = flags.FLAGS
 """ 전역변수 설정 """
 ########################################################################################################################
 dataset = LiST17_2D
-modules.rank = dataset.rank
-modules.assignment_function_according_to_data_rank()
+modules.assignment_function_according_to_data_rank(dataset.rank)
 
 ########################################################################################################################
 def main(*argv, **kwargs):
